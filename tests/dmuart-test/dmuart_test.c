@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 /**
- * @brief dmuart_test – CPU clock frequency measurement application.
+ * @brief dmuart_test – template timing calibration application.
  *
  * Usage:
  *   dmuart_test <seconds>
@@ -20,7 +20,7 @@
 
 int main(int argc, char* argv[])
 {
-    Dmod_Printf("\n=== DMUART Clock Frequency Measurement ===\n\n");
+    Dmod_Printf("\n=== DMUART Template Timing Calibration ===\n\n");
 
     if (argc < 2)
     {
