@@ -347,8 +347,6 @@ int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_fre
 
 Configures the system clock using the hibernation clock source.
 
-**Note:** Function name contains a typo (should be "hibernation") but is kept for API compatibility.
-
 ### dmuart_port_delay_us
 
 ```c
