@@ -198,7 +198,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _configure_external, ( dmuart_frequen
  * 
  * @return int 0 on success, non-zero on failure
  */
-int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq)
+dmod_dmuart_port_api_declaration(1.0, int, _configure_hibernation, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq ) )
 {
     /* LSI is typically used for hibernation/low-power modes
      * For STM32F7, LSI runs at approximately 32 kHz
@@ -247,7 +247,7 @@ dmod_dmuart_port_api_declaration(1.0, void, _delay_us, ( dmuart_time_us_t time_u
  * @param seconds Number of seconds to busy-wait
  * @return uint64_t Total number of CPU cycles consumed by the busy-wait loop
  */
-uint64_t dmuart_port_delay(uint32_t seconds)
+dmod_dmuart_port_api_declaration(1.0, uint64_t, _delay, ( uint32_t seconds ) )
 {
     uint64_t target_cycles = (uint64_t)current_sysclk * (uint64_t)seconds;
 
