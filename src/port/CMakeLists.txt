@@ -21,8 +21,8 @@ set(DMOD_STACK_SIZE         1024)
 
 # Determine common source files based on MCU family
 set(COMMON_SOURCES "")
-if(DMUART_MCU_SERIES MATCHES "^stm32")
-    # Add STM32 common implementation for all STM32 families
+if(DMUART_MCU_SERIES STREQUAL "stm32f7")
+    # STM32F7 uses stm32_common helper
     set(COMMON_SOURCES stm32_common/stm32_common.c)
 endif()
 

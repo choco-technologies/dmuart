@@ -14,6 +14,11 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     dmuart_test.c
 )
 
-target_link_libraries(${DMOD_MODULE_NAME}
-    dmuart_port_if
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmdrvi
+    dmini
+)
+
+target_include_directories(${DMOD_MODULE_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
 )

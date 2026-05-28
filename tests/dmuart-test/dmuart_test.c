@@ -1,5 +1,7 @@
 #include <dmod.h>
-#include "dmuart_port.h"
+#include "dmuart.h"
+#include "dmdrvi.h"
+#include "dmini.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -7,11 +9,12 @@
  * @brief dmuart_test – UART loopback test application.
  *
  * Usage:
- *   dmuart_test <instance> [baudrate]
+ *   dmuart_test <config_file>
  *
- * The application initializes the specified UART instance and performs a
- * loopback test by transmitting a known pattern and verifying that the
- * same data is received back. Requires TX connected to RX (loopback).
+ * The application loads the given UART configuration file, creates a dmuart
+ * device via the dmdrvi interface, and performs a loopback test by transmitting
+ * a known pattern and verifying that the same data is received back.
+ * Requires TX connected to RX (loopback).
  */
 
 int main(int argc, char* argv[])
@@ -20,54 +23,60 @@ int main(int argc, char* argv[])
 
     if (argc < 2)
     {
-        Dmod_Printf("Usage: dmuart_test <instance> [baudrate]\n");
-        Dmod_Printf("Example: dmuart_test 1 115200\n\n");
-        Dmod_Printf("Performs a UART loopback test on the specified instance.\n");
+        Dmod_Printf("Usage: dmuart_test <config_file>\n");
+        Dmod_Printf("Example: dmuart_test configs/board/stm32f746g-disco/usart1.ini\n\n");
+        Dmod_Printf("Performs a UART loopback test using the specified configuration.\n");
         Dmod_Printf("Requires TX connected to RX externally.\n");
         return -1;
     }
 
-    uint32_t instance = 0;
-    if (Dmod_Sscanf(argv[1], "%u", &instance) <= 0 || instance == 0)
+    const char *config_path = argv[1];
+    Dmod_Printf("Config file: %s\n\n", config_path);
+
+    /* Load configuration */
+    dmini_context_t config = dmini_load(config_path);
+    if (config == NULL)
     {
-        Dmod_Printf("Error: invalid instance: '%s'\n", argv[1]);
+        Dmod_Printf("Error: failed to load configuration file '%s'\n", config_path);
         return -1;
     }
 
-    uint32_t baudrate = 115200; /* default */
-    if (argc >= 3)
+    /* Create UART device via dmdrvi */
+    dmdrvi_dev_num_t dev_num = {0};
+    dmdrvi_context_t ctx = dmuart_dmdrvi_create(config, &dev_num);
+    if (ctx == NULL)
     {
-        if (Dmod_Sscanf(argv[2], "%u", &baudrate) <= 0 || baudrate == 0)
-        {
-            Dmod_Printf("Error: invalid baudrate: '%s'\n", argv[2]);
-            return -1;
-        }
-    }
-
-    Dmod_Printf("UART instance : %u\n", instance);
-    Dmod_Printf("Baud rate     : %u\n\n", baudrate);
-
-    /* Initialize UART: 8N1, no flow control */
-    int ret = dmuart_port_init(instance, baudrate, 8, 0, 0, 0);
-    if (ret != 0)
-    {
-        Dmod_Printf("Error: failed to initialize UART%u\n", instance);
+        Dmod_Printf("Error: failed to create UART device from configuration\n");
+        dmini_free(config);
         return -1;
     }
 
-    Dmod_Printf("UART%u initialized successfully.\n", instance);
+    Dmod_Printf("UART device created successfully.\n");
+
+    /* Open device */
+    void *handle = dmuart_dmdrvi_open(ctx, DMDRVI_O_RDWR);
+    if (handle == NULL)
+    {
+        Dmod_Printf("Error: failed to open UART device\n");
+        dmuart_dmdrvi_free(ctx);
+        dmini_free(config);
+        return -1;
+    }
 
     /* Test pattern */
-    const char* test_pattern = "Hello DMUART!";
+    const char *test_pattern = "Hello DMUART!";
     size_t pattern_len = strlen(test_pattern);
 
     Dmod_Printf("Transmitting: \"%s\" (%u bytes)\n", test_pattern, (unsigned)pattern_len);
 
-    ret = dmuart_port_transmit(instance, (const uint8_t*)test_pattern, pattern_len);
-    if (ret != 0)
+    size_t written = dmuart_dmdrvi_write(ctx, handle, test_pattern, pattern_len, 0);
+    if (written != pattern_len)
     {
-        Dmod_Printf("Error: transmission failed\n");
-        dmuart_port_deinit(instance);
+        Dmod_Printf("Error: transmission failed (wrote %u of %u bytes)\n",
+            (unsigned)written, (unsigned)pattern_len);
+        dmuart_dmdrvi_close(ctx, handle);
+        dmuart_dmdrvi_free(ctx);
+        dmini_free(config);
         return -1;
     }
 
@@ -75,15 +84,7 @@ int main(int argc, char* argv[])
 
     /* Receive data */
     uint8_t rx_buffer[64] = {0};
-    size_t received = 0;
-
-    ret = dmuart_port_receive(instance, rx_buffer, pattern_len, &received);
-    if (ret != 0)
-    {
-        Dmod_Printf("Error: reception failed\n");
-        dmuart_port_deinit(instance);
-        return -1;
-    }
+    size_t received = dmuart_dmdrvi_read(ctx, handle, rx_buffer, pattern_len, 0);
 
     Dmod_Printf("Received %u bytes: \"%.*s\"\n", (unsigned)received, (int)received, rx_buffer);
 
@@ -98,13 +99,16 @@ int main(int argc, char* argv[])
         Dmod_Printf("Expected %u bytes, got %u\n", (unsigned)pattern_len, (unsigned)received);
     }
 
-    /* Get current baudrate */
-    dmuart_baudrate_t current_baud = dmuart_port_get_baudrate(instance);
-    Dmod_Printf("Current baudrate: %u bps\n", current_baud);
+    /* Test flush */
+    int flush_ret = dmuart_dmdrvi_flush(ctx, handle);
+    Dmod_Printf("Flush result: %d\n", flush_ret);
 
     /* Cleanup */
-    dmuart_port_deinit(instance);
-    Dmod_Printf("UART%u deinitialized.\n\n", instance);
+    dmuart_dmdrvi_close(ctx, handle);
+    dmuart_dmdrvi_free(ctx);
+    dmini_free(config);
+
+    Dmod_Printf("Test complete.\n\n");
 
     return 0;
 }

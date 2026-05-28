@@ -1,57 +1,25 @@
 #ifndef DMUART_H
 #define DMUART_H
 
-#include <stdint.h>
-#include "dmod.h"
 #include "dmuart_defs.h"
+#include "dmuart_types.h"
 
 /**
- * @brief UART parity configuration
+ * @brief UART driver configuration structure
  */
-typedef enum 
+typedef struct
 {
-    dmuart_parity_none = 0,         /**< No parity */
-    dmuart_parity_even,             /**< Even parity */
-    dmuart_parity_odd,              /**< Odd parity */
-} dmuart_parity_t;
-
-/**
- * @brief UART stop bits configuration
- */
-typedef enum 
-{
-    dmuart_stopbits_1 = 0,          /**< 1 stop bit */
-    dmuart_stopbits_2,              /**< 2 stop bits */
-} dmuart_stopbits_t;
-
-/**
- * @brief UART flow control configuration
- */
-typedef enum 
-{
-    dmuart_flowcontrol_none = 0,    /**< No flow control */
-    dmuart_flowcontrol_rts_cts,     /**< RTS/CTS hardware flow control */
-} dmuart_flowcontrol_t;
-
-/**
- * @brief IOCTL commands for DMUART device
- */
-typedef enum 
-{
-    dmuart_ioctl_cmd_get_baudrate = 1,      /**< Get current baud rate */
-    dmuart_ioctl_cmd_set_baudrate,          /**< Set baud rate */
-    dmuart_ioctl_cmd_get_parity,            /**< Get parity setting */
-    dmuart_ioctl_cmd_set_parity,            /**< Set parity setting */
-    dmuart_ioctl_cmd_get_stopbits,          /**< Get stop bits setting */
-    dmuart_ioctl_cmd_set_stopbits,          /**< Set stop bits setting */
-    dmuart_ioctl_cmd_get_flowcontrol,       /**< Get flow control setting */
-    dmuart_ioctl_cmd_set_flowcontrol,       /**< Set flow control setting */
-    dmuart_ioctl_cmd_get_databits,          /**< Get data bits setting */
-    dmuart_ioctl_cmd_set_databits,          /**< Set data bits setting */
-    dmuart_ioctl_cmd_reconfigure,           /**< Reconfigure UART with current settings */
-
-    dmuart_ioctl_cmd_max
-
-} dmuart_ioctl_cmd_t;
+    dmuart_instance_t       instance;           /**< UART instance number (1-based) */
+    dmuart_baudrate_t       baudrate;           /**< Baud rate */
+    dmuart_word_length_t    word_length;        /**< Word length (data bits) */
+    dmuart_parity_t         parity;             /**< Parity setting */
+    dmuart_stop_bit_t       stop_bit;           /**< Stop bit setting */
+    dmuart_flow_control_t   flow_control;       /**< Flow control setting */
+    dmuart_bit_order_t      bit_order;          /**< Bit order (LSB/MSB first) */
+    dmuart_invert_t         invert;             /**< Signal inversion */
+    dmuart_loopback_t       loopback;           /**< Loopback mode */
+    dmuart_int_trigger_t    interrupt_trigger;  /**< Interrupt trigger source */
+    dmuart_interrupt_handler_t interrupt_handler; /**< Interrupt handler (NULL = not used) */
+} dmuart_config_t;
 
 #endif // DMUART_H
