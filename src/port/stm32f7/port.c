@@ -374,11 +374,12 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_loopback, ( dmuart_instance_t in
     volatile USART_TypeDef *USART = get_usart(instance);
     USART->CR1 &= ~USART_CR1_UE;
 
-    /* STM32F7 does not have a direct loopback bit; use HDSEL in CR3 as half-duplex */
-    /* For true loopback support we configure internal connection via SWAP bit (CR2 bit 15) */
+    /* STM32F7 does not have a true internal loopback mode.
+     * SWAP bit (CR2 bit 15) swaps TX/RX pin assignment, which combined with
+     * external loopback wiring can be useful for testing. */
     if (loopback == dmuart_loopback_on)
     {
-        USART->CR2 |= (1U << 15); /* SWAP: TX/RX pins swapped internally */
+        USART->CR2 |= (1U << 15); /* SWAP */
     }
     else
     {

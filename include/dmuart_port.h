@@ -2,7 +2,6 @@
 #define DMUART_PORT_H
 
 #include "dmod_types.h"
-#include "dmuart_port.h"
 #include "dmuart_port_defs.h"
 #include "dmuart_types.h"
 

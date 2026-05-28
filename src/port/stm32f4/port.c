@@ -356,7 +356,10 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_loopback, ( dmuart_instance_t in
     volatile STM32F4_USART_TypeDef *USART = get_usart(instance);
     USART->CR1 &= ~STM32F4_USART_CR1_UE;
 
-    /* STM32F4 uses half-duplex mode (HDSEL) for loopback-like behavior */
+    /* STM32F4 does not have a true internal loopback mode.
+     * HDSEL (half-duplex) mode is used here as the closest available option;
+     * note that it is not a true loopback — it shares the TX pin for both
+     * directions, so external wiring is still needed for loopback testing. */
     if (loopback == dmuart_loopback_on)
     {
         USART->CR3 |= (1U << 3); /* HDSEL */
