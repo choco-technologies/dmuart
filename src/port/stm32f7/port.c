@@ -57,7 +57,7 @@ static void enable_uart_clock(uint32_t instance)
 }
 
 /**
- * @brief Initialize the DMDRVI module
+ * @brief Initialize the DMUART port module
  * 
  * @param Config Pointer to Dmod_Config_t structure with configuration parameters
  * 
@@ -65,18 +65,18 @@ static void enable_uart_clock(uint32_t instance)
  */
 int dmod_init(const Dmod_Config_t *Config)
 {
-    Dmod_Printf("DMUART interface module initialized (STM32F7)\n");
+    Dmod_Printf("DMUART port module initialized (STM32F7)\n");
     return 0;
 }
 
 /**
- * @brief Deinitialize the DMDRVI module
+ * @brief Deinitialize the DMUART port module
  * 
  * @return int 0 on success, non-zero on failure
  */
 int dmod_deinit(void)
 {
-    Dmod_Printf("DMUART interface module deinitialized (STM32F7)\n");
+    Dmod_Printf("DMUART port module deinitialized (STM32F7)\n");
     return 0;
 }
 

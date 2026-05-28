@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <string.h>
 
-// Magic set to DURT
+// Magic set to UART
 #define DMUART_CONTEXT_MAGIC    0x44555254
 
 /**
