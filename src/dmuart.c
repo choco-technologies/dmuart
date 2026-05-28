@@ -88,7 +88,7 @@ static dmuart_source_t string_to_source(const char* source_str)
             return dmuart_source_hibernation;
         }
     }
-    return dmuart_source_unkown;
+    return dmuart_source_unknown;
 }
 
 /**
@@ -110,7 +110,7 @@ static int check_config_parameters(struct config* cfg)
         DMOD_LOG_ERROR("Tolerance not set in configuration\n");
         return -EINVAL;
     }
-    else if (cfg->source == dmuart_source_unkown)
+    else if (cfg->source == dmuart_source_unknown)
     {
         DMOD_LOG_ERROR("Clock source not set or unknown in configuration\n");
         return -EINVAL;
@@ -160,7 +160,7 @@ static int configure(dmdrvi_context_t context)
             ret = dmuart_port_configure_external(context->config.target_frequency, context->config.tolerance, context->config.oscillator_frequency);
             break;
         case dmuart_source_hibernation:
-            ret = dmuart_port_configure_hibernatation(context->config.target_frequency, context->config.tolerance, context->config.oscillator_frequency);
+            ret = dmuart_port_configure_hibernation(context->config.target_frequency, context->config.tolerance, context->config.oscillator_frequency);
             break;
         default:
             DMOD_LOG_ERROR("Unknown clock source in configuration\n");

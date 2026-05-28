@@ -23,7 +23,7 @@ Represents time in microseconds (µs). Used for delay operations.
 ```c
 typedef enum 
 {
-    dmuart_source_unkown = 0,        /**< Unknown clock source */
+    dmuart_source_unknown = 0,        /**< Unknown clock source */
     dmuart_source_internal,          /**< Internal RC oscillator */
     dmuart_source_external,          /**< External crystal or oscillator */
     dmuart_source_hibernation,       /**< Low-power hibernation clock source */
@@ -339,10 +339,10 @@ int dmuart_port_configure_external(dmuart_frequency_t target_freq, dmuart_freque
 
 Configures the system clock using an external crystal or oscillator.
 
-### dmuart_port_configure_hibernatation
+### dmuart_port_configure_hibernation
 
 ```c
-int dmuart_port_configure_hibernatation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq);
+int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq);
 ```
 
 Configures the system clock using the hibernation clock source.

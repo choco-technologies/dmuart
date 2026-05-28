@@ -10,7 +10,7 @@
  */
 typedef enum 
 {
-    dmuart_source_unkown = 0,        /**< Unknown clock source */
+    dmuart_source_unknown = 0,        /**< Unknown clock source */
     dmuart_source_internal,          /**< Internal RC oscillator */
     dmuart_source_external,          /**< External crystal or oscillator */
     dmuart_source_hibernation,       /**< Low-power hibernation clock source */

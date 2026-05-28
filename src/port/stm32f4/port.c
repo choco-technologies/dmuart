@@ -198,7 +198,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _configure_external, ( dmuart_frequen
  * 
  * @return int 0 on success, non-zero on failure
  */
-dmod_dmuart_port_api_declaration(1.0, int, _configure_hibernatation, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq) )
+dmod_dmuart_port_api_declaration(1.0, int, _configure_hibernation, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq) )
 {
     /* LSI is typically used for hibernation/low-power modes
      * For STM32F4, LSI runs at approximately 32 kHz

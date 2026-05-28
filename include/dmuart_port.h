@@ -16,7 +16,7 @@ typedef uint64_t dmuart_time_us_t;
 
 dmod_dmuart_port_api(1.0, int, _configure_internal, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance) );
 dmod_dmuart_port_api(1.0, int, _configure_external, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq) );
-dmod_dmuart_port_api(1.0, int, _configure_hibernatation, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq) );
+dmod_dmuart_port_api(1.0, int, _configure_hibernation, ( dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq) );
 dmod_dmuart_port_api(1.0, void, _delay_us, ( dmuart_time_us_t time_us) );
 dmod_dmuart_port_api(1.0, dmuart_frequency_t, _get_current_frequency, ( void ) );
 

@@ -198,7 +198,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _configure_external, ( dmuart_frequen
  * 
  * @return int 0 on success, non-zero on failure
  */
-int dmuart_port_configure_hibernatation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq)
+int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq)
 {
     /* LSI is typically used for hibernation/low-power modes
      * For STM32F7, LSI runs at approximately 32 kHz
@@ -217,7 +217,7 @@ int dmuart_port_configure_hibernatation(dmuart_frequency_t target_freq, dmuart_f
  * 
  * @param time_us Time to delay in microseconds
  */
-void dmuart_port_delay_us(dmuart_time_us_t time_us)
+dmod_dmuart_port_api_declaration(1.0, void, _delay_us, ( dmuart_time_us_t time_us ) )
 {
     /* Simple delay loop
      * This is a very basic implementation - cycles depend on sysclk
@@ -290,7 +290,7 @@ uint64_t dmuart_port_delay(uint32_t seconds)
  * 
  * @return dmuart_frequency_t Current frequency in Hz
  */
-dmuart_frequency_t dmuart_port_get_current_frequency(void)
+dmod_dmuart_port_api_declaration(1.0, dmuart_frequency_t, _get_current_frequency, ( void ) )
 {
     /* Return cached value or calculate from registers */
     uint32_t freq = stm32_get_sysclk_freq(STM32F7_RCC_BASE, HSI_VALUE);

@@ -53,10 +53,10 @@ Configures the system clock using an external crystal or oscillator.
 - 0 on success
 - Negative error code on failure
 
-### 3. dmuart_port_configure_hibernatation
+### 3. dmuart_port_configure_hibernation
 
 ```c
-int dmuart_port_configure_hibernatation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq);
+int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq);
 ```
 
 Configures the system clock using the hibernation/low-power clock source.
@@ -242,7 +242,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _configure_external,
 }
 
 // Hibernation/low-power clock configuration
-dmod_dmuart_port_api_declaration(1.0, int, _configure_hibernatation,
+dmod_dmuart_port_api_declaration(1.0, int, _configure_hibernation,
     (dmuart_frequency_t target_freq, dmuart_frequency_t tolerance, dmuart_frequency_t oscillator_freq))
 {
     // Configure low-power clock source

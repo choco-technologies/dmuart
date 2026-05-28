@@ -81,7 +81,7 @@ port/
 2. **Implement port API functions**:
    - `dmuart_port_configure_internal()`
    - `dmuart_port_configure_external()`
-   - `dmuart_port_configure_hibernatation()`
+   - `dmuart_port_configure_hibernation()`
    - `dmuart_port_delay_us()`
    - `dmuart_port_get_current_frequency()`
 
@@ -114,4 +114,4 @@ The current STM32 implementation provides:
 
 ### API Notes
 
-Note: The API function name `dmuart_port_configure_hibernatation` contains a typo (should be "hibernation") but is kept as-is for API compatibility with the existing interface definition.
+Note: The API function name `dmuart_port_configure_hibernation` contains a typo (should be "hibernation") but is kept as-is for API compatibility with the existing interface definition.
