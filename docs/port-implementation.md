@@ -61,8 +61,6 @@ int dmuart_port_configure_hibernation(dmuart_frequency_t target_freq, dmuart_fre
 
 Configures the system clock using the hibernation/low-power clock source.
 
-**Note:** Function name contains a typo but is kept for API compatibility.
-
 **Parameters:**
 - `target_freq`: Desired frequency in Hz
 - `tolerance`: Acceptable deviation in Hz
