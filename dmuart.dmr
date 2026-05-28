@@ -1,0 +1,34 @@
+# DMOD Resource File for dmuart
+# This file specifies where resources should be installed
+
+# === Core Module ===
+# Main module file - always installed
+dmf=./dmuart.dmf => ${destination}/${module}.dmf
+
+# Compressed module
+dmfc=./dmuart.dmfc => ${destination}/${module}.dmfc
+
+# Dependencies file (if exists)
+dmd=./dmuart.dmd => ${destination}/${module}.dmd
+
+# Version information
+version=./dmuart_version.txt => ${destination}/${module}_version.txt
+
+# === Documentation ===
+# Module documentation in markdown format for dmf-man tool
+docs=./docs => ${destination}/${module}/docs
+
+# README file
+readme=./README.md => ${destination}/${module}/README.md
+
+# === Header Files ===
+# Include directory with all headers (dmuart.h and dmuart_defs.h)
+inc=./include => ${destination}/${module}/include
+
+# === Configuration Files ===
+# Configuration directory with board and MCU specific configs
+configs=./configs => ${destination}/${module}/configs
+
+# === License ===
+# License file
+license=./LICENSE => ${destination}/${module}/LICENSE
