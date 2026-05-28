@@ -1,5 +1,6 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
+#include "dmod.h"
 #include "port/stm32f4_regs.h"
 
 /* UART instance base addresses */

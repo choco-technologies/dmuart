@@ -1,5 +1,6 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
+#include "dmod.h"
 #include "../stm32_common/stm32_common.h"
 #include "port/stm32_common_regs.h"
 #include "port/stm32f7_regs.h"
