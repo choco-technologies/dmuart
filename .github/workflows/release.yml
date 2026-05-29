@@ -82,14 +82,12 @@ jobs:
           CPU="${{ matrix.cpu_family }}"
 
           # Add release notes to dmuart package and create release archive
-           mkdir -p "$BUILD_DIR/packages/dmuart"
           echo "${{ github.event.release.body }}" > "$BUILD_DIR/packages/dmuart/RELEASE_NOTES.txt"
           cd "$BUILD_DIR/packages/dmuart"
           zip -r "${OLDPWD}/dmuart-${TAG}-${CPU}.zip" .
           cd -
 
           # Add release notes to dmuart_port package and create release archive
-           mkdir -p "$BUILD_DIR/packages/dmuart_port"
           echo "${{ github.event.release.body }}" > "$BUILD_DIR/packages/dmuart_port/RELEASE_NOTES.txt"
           cd "$BUILD_DIR/packages/dmuart_port"
           zip -r "${OLDPWD}/dmuart_port-${TAG}-${CPU}.zip" .
