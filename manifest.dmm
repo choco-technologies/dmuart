@@ -3,5 +3,5 @@ $include https://github.com/choco-technologies/dmuart/releases/download/vlatest/
 
 # Module entries with version placeholder - will be expanded by $version-available
 dmuart      https://github.com/choco-technologies/dmuart/releases/download/v<version>/dmuart-v<version>-<cpu_family>.zip
-dmuart_port https://github.com/choco-technologies/dmuart/releases/download/v<version>/dmuart-v<version>-<cpu_family>.zip
+dmuart_port https://github.com/choco-technologies/dmuart/releases/download/v<version>/dmuart_port-v<version>-<cpu_family>.zip
 dmuart_test https://github.com/choco-technologies/dmuart/releases/download/v<version>/dmuart-v<version>-<cpu_family>.zip
