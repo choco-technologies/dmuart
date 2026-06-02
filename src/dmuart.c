@@ -127,6 +127,94 @@ static dmuart_word_length_t int_to_word_length(int val)
 
 /* ---- Configuration ---- */
 
+/**
+ * @brief Detect which INI section holds the UART configuration.
+ *
+ * The driver supports two config file layouts:
+ *   1. Standard: a [dmuart] section (e.g. examples/config.ini).
+ *   2. Board / device-named: a section whose name is the device label
+ *      (e.g. [stlink_vcp] in board config files).
+ *
+ * Detection strategy:
+ *   a) If [dmuart] contains a 'baudrate' or 'instance' key → use "dmuart".
+ *   b) Otherwise serialise the INI to a temporary string and scan for
+ *      the first named section (skipping [main]) that contains 'baudrate'
+ *      or 'instance'.  Copy its name into section_buf and return it.
+ *   c) Fall back to "dmuart" so the caller produces a meaningful error.
+ *
+ * @param ini            INI context to inspect.
+ * @param section_buf    Caller-supplied buffer that receives the name when
+ *                       a non-"dmuart" section is chosen.
+ * @param section_buf_sz Size of section_buf in bytes.
+ * @return Pointer to the chosen section name (either the literal "dmuart"
+ *         or section_buf).
+ */
+static const char *detect_config_section(dmini_context_t ini,
+                                          char *section_buf, size_t section_buf_sz)
+{
+    /* Fast path – standard [dmuart] section present */
+    if (dmini_has_key(ini, "dmuart", "baudrate") || dmini_has_key(ini, "dmuart", "instance"))
+        return "dmuart";
+
+    /* Slow path – serialise the INI and scan for the first usable section */
+    int needed = dmini_generate_string(ini, NULL, 0);
+    if (needed <= 1)
+        return "dmuart";
+
+    /* dmini_generate_string follows snprintf convention: the first call returns
+     * the number of characters that would be written, NOT including the null
+     * terminator.  Allocate one extra byte so the null terminator always fits
+     * and the scanning loop below is guaranteed to find it within the buffer. */
+    char *ini_str = (char *)Dmod_Malloc((size_t)needed + 1);
+    if (ini_str == NULL)
+        return "dmuart";
+
+    if (dmini_generate_string(ini, ini_str, (size_t)needed + 1) <= 0)
+    {
+        Dmod_Free(ini_str);
+        return "dmuart";
+    }
+    ini_str[needed] = '\0'; /* belt-and-suspenders: ensure the buffer is always
+                             * null-terminated regardless of dmini API behaviour */
+
+    const char *result = "dmuart";
+    char *p = ini_str;
+    while (*p != '\0')
+    {
+        if (*p == '[')
+        {
+            char *name_start = p + 1;
+            char *name_end   = name_start;
+            while (*name_end != '\0' && *name_end != ']' &&
+                   *name_end != '\n'  && *name_end != '\r')
+                name_end++;
+
+            if (*name_end == ']')
+            {
+                size_t name_len = (size_t)(name_end - name_start);
+                if (name_len > 0 && name_len < section_buf_sz)
+                {
+                    /* Copy to section_buf so we have a null-terminated name */
+                    memcpy(section_buf, name_start, name_len);
+                    section_buf[name_len] = '\0';
+
+                    if (strcmp(section_buf, "main") != 0 &&
+                        (dmini_has_key(ini, section_buf, "baudrate") ||
+                         dmini_has_key(ini, section_buf, "instance")))
+                    {
+                        result = section_buf;
+                        break;
+                    }
+                }
+            }
+        }
+        p++;
+    }
+
+    Dmod_Free(ini_str);
+    return result;
+}
+
 static int check_config_parameters(dmuart_config_t *cfg)
 {
     if (cfg->baudrate == 0)
@@ -144,8 +232,10 @@ static int check_config_parameters(dmuart_config_t *cfg)
     return 0;
 }
 
-static int read_config_parameters(dmdrvi_context_t context, dmini_context_t config, const char *section)
+static int read_config_parameters(dmdrvi_context_t context, dmini_context_t config)
 {
+    char section_buf[64];
+    const char *section = detect_config_section(config, section_buf, sizeof(section_buf));
     context->config.baudrate    = (dmuart_baudrate_t)dmini_get_int(config, section, "baudrate", 0);
     context->config.word_length = int_to_word_length(dmini_get_int(config, section, "databits", 8));
     context->config.parity      = string_to_parity(dmini_get_string(config, section, "parity", "none"));
@@ -318,43 +408,57 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
         return NULL;
     }
 
-    dev_num->major = 0;
-    dev_num->minor = 0;
-    dev_num->flags = DMDRVI_NUM_MINOR;
-
     dmdrvi_context_t context = Dmod_Malloc(sizeof(struct dmdrvi_context));
-    if (context != NULL)
+    if (context == NULL)
+        return NULL;
+
+    memset(context, 0, sizeof(*context));
+    context->magic = DMUART_CONTEXT_MAGIC;
+
+    if (read_config_parameters(context, config) != 0 ||
+        configure(context) != 0)
     {
-        memset(context, 0, sizeof(*context));
-        context->magic = DMUART_CONTEXT_MAGIC;
-
-        /* Determine the INI section name - use section name from config or default */
-        const char *section = dmini_get_string(config, NULL, "driver_section", "dmuart");
-
-        if (read_config_parameters(context, config, section) != 0 ||
-            configure(context) != 0)
-        {
-            DMOD_LOG_ERROR("Failed to create DMDRVI context with provided configuration\n");
-            Dmod_Free(context->interrupt_handler_name);
-            Dmod_Free(context);
-            return NULL;
-        }
-
-        /* Register interrupt handler if configured */
-        if (context->interrupt_handler_name != NULL)
-        {
-            if (dmuart_port_add_interrupt_handler(context->config.instance,
-                    dmhaman_interrupt_handler, context) != 0)
-            {
-                DMOD_LOG_ERROR("Failed to register interrupt handler '%s'\n",
-                    context->interrupt_handler_name);
-                Dmod_Free(context->interrupt_handler_name);
-                context->interrupt_handler_name = NULL;
-            }
-        }
-
-        DMOD_LOG_INFO("UART configured at %u baud\n", context->current_baudrate);
+        DMOD_LOG_ERROR("Failed to create DMDRVI context with provided configuration\n");
+        Dmod_Free(context->interrupt_handler_name);
+        Dmod_Free(context);
+        return NULL;
     }
+
+    /* Register interrupt handler if configured */
+    if (context->interrupt_handler_name != NULL)
+    {
+        if (dmuart_port_add_interrupt_handler(context->config.instance,
+                dmhaman_interrupt_handler, context) != 0)
+        {
+            DMOD_LOG_ERROR("Failed to register interrupt handler '%s'\n",
+                context->interrupt_handler_name);
+            Dmod_Free(context->interrupt_handler_name);
+            context->interrupt_handler_name = NULL;
+        }
+    }
+
+    DMOD_LOG_INFO("UART configured at %u baud\n", context->current_baudrate);
+
+    /* Populate dev_num: minor = UART instance number (1-based). */
+    dev_num->flags = DMDRVI_NUM_MINOR;
+    dev_num->major = 0;
+    dev_num->minor = (dmdrvi_dev_id_t)context->config.instance;
+
+    /* If the config uses a named section (e.g. [stlink_vcp]) populate alt_name
+     * so the device filesystem registers the device under that human-friendly
+     * name instead of a numeric path. */
+    char section_buf[DMDRVI_ALT_NAME_MAX_LEN + 1];
+    const char *section = detect_config_section(config, section_buf, sizeof(section_buf));
+    if (strcmp(section, "dmuart") != 0)
+    {
+        size_t name_len = strlen(section);
+        if (name_len <= DMDRVI_ALT_NAME_MAX_LEN)
+        {
+            dev_num->flags |= DMDRVI_NUM_ALT_NAME;
+            memcpy(dev_num->alt_name, section, name_len + 1);
+        }
+    }
+
     return context;
 }
 
