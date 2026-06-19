@@ -23,7 +23,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ======================================================================
 # Allow version to be passed as a parameter, default to 0.1
 if(NOT DEFINED DMOD_MODULE_VERSION)
-    set(DMOD_MODULE_VERSION "0.1" CACHE STRING "DMOD module version")
+    set(DMOD_MODULE_VERSION "0.2" CACHE STRING "DMOD module version")
 endif()
 
 # ======================================================================
@@ -101,6 +101,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmdrvi
     dmini
     dmhaman
+    dm_sw_ring
 )
 
 target_link_libraries(${DMOD_MODULE_NAME} 

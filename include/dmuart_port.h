@@ -4,6 +4,7 @@
 #include "dmod_types.h"
 #include "dmuart_port_defs.h"
 #include "dmuart_types.h"
+#include "dm_sw_ring.h"
 
 /* --- Lifecycle --- */
 
@@ -62,5 +63,10 @@ dmod_dmuart_port_api(1.0, int, _add_interrupt_handler,
     ( dmuart_instance_t instance, dmuart_port_interrupt_handler_t handler, void *user_ptr ) );
 dmod_dmuart_port_api(1.0, int, _remove_interrupt_handler,
     ( dmuart_instance_t instance, void *user_ptr ) );
+
+/* --- SW ring buffer --- */
+
+dmod_dmuart_port_api(1.0, int, _set_rx_ring,
+    ( dmuart_instance_t instance, dm_sw_ring_t ring ) );
 
 #endif // DMUART_PORT_H

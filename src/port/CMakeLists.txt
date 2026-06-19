@@ -41,6 +41,10 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     ${COMMON_SOURCES}
 )
 
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dm_sw_ring
+)
+
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}

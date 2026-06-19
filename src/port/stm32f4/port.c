@@ -1,6 +1,7 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
 #include "dmod.h"
+#include "dm_sw_ring.h"
 #include "port/stm32f4_regs.h"
 
 /* UART instance base addresses */
@@ -16,6 +17,9 @@ static const uint32_t uart_base_addresses[STM32F4_UART_MAX_INSTANCES] = {
 /* Per-instance interrupt handler registration */
 static dmuart_port_interrupt_handler_t irq_handlers[STM32F4_UART_MAX_INSTANCES];
 static void *irq_user_ptrs[STM32F4_UART_MAX_INSTANCES];
+
+/* Per-instance SW ring buffers — set via dmuart_port_set_rx_ring() */
+static dm_sw_ring_t rx_rings[STM32F4_UART_MAX_INSTANCES];
 
 /* Timeout value */
 #define STM32F4_UART_TIMEOUT    10000U
@@ -85,6 +89,7 @@ int dmod_init(const Dmod_Config_t *Config)
     {
         irq_handlers[i] = NULL;
         irq_user_ptrs[i] = NULL;
+        rx_rings[i]      = NULL;
     }
     return 0;
 }
@@ -158,6 +163,13 @@ dmod_dmuart_port_api_declaration(1.0, int, _receive, ( dmuart_instance_t instanc
 {
     if (validate_instance(instance) != 0 || data == NULL || received == NULL) return -1;
 
+    dm_sw_ring_t ring = rx_rings[instance - 1];
+    if (ring != NULL)
+    {
+        *received = (size_t)dm_sw_ring_read(ring, data, (dm_sw_ring_capacity_t)size);
+        return 0;
+    }
+
     volatile STM32F4_USART_TypeDef *USART = get_usart(instance);
     *received = 0;
 
@@ -171,7 +183,6 @@ dmod_dmuart_port_api_declaration(1.0, int, _receive, ( dmuart_instance_t instanc
 
         if (USART->SR & (STM32F4_USART_SR_ORE | STM32F4_USART_SR_FE | STM32F4_USART_SR_PE))
         {
-            /* Clear errors by reading SR then DR */
             (void)USART->DR;
             return -1;
         }
@@ -448,27 +459,34 @@ dmod_dmuart_port_api_declaration(1.0, int, _remove_interrupt_handler,
     return 0;
 }
 
+dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
+    ( dmuart_instance_t instance, dm_sw_ring_t ring ))
+{
+    if (validate_instance(instance) != 0) return -1;
+    rx_rings[instance - 1] = ring;
+    return 0;
+}
+
 /* ---- ISR handlers ---- */
 
 static void stm32f4_uart_irq_handler(dmuart_instance_t instance)
 {
     volatile STM32F4_USART_TypeDef *USART = get_usart(instance);
-    dmuart_port_interrupt_handler_t handler = irq_handlers[instance - 1];
-
-    if (handler == NULL) return;
+    uint32_t idx = (uint32_t)(instance - 1);
 
     uint8_t data = 0;
     dmuart_int_trigger_t trigger = dmuart_int_trigger_off;
 
     if (USART->SR & STM32F4_USART_SR_RXNE)
     {
-        data = (uint8_t)(USART->DR & 0xFF);
+        data = (uint8_t)(USART->DR & 0xFF);  /* reading DR clears RXNE */
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_rx_not_empty);
+
+        if (rx_rings[idx] != NULL)
+            dm_sw_ring_write(rx_rings[idx], &data, 1);
     }
     if (USART->SR & STM32F4_USART_SR_TXE)
-    {
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_tx_empty);
-    }
     if (USART->SR & STM32F4_USART_SR_TC)
     {
         USART->SR &= ~STM32F4_USART_SR_TC;
@@ -476,15 +494,13 @@ static void stm32f4_uart_irq_handler(dmuart_instance_t instance)
     }
     if (USART->SR & (STM32F4_USART_SR_ORE | STM32F4_USART_SR_FE | STM32F4_USART_SR_PE))
     {
-        /* Clear errors by reading SR then DR */
         (void)USART->DR;
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_error);
     }
 
-    if (trigger != dmuart_int_trigger_off)
-    {
-        handler(irq_user_ptrs[instance - 1], instance, trigger, data);
-    }
+    dmuart_port_interrupt_handler_t handler = irq_handlers[idx];
+    if (handler != NULL && trigger != dmuart_int_trigger_off)
+        handler(irq_user_ptrs[idx], instance, trigger, data);
 }
 
 /* NVIC IRQ numbers for STM32F4 UART instances */

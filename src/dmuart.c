@@ -5,6 +5,7 @@
 #include "dmdrvi.h"
 #include "dmhaman.h"
 #include "dmini.h"
+#include "dm_sw_ring.h"
 #include <errno.h>
 #include <string.h>
 
@@ -20,6 +21,8 @@ struct dmdrvi_context
     dmuart_config_t     config;                     /**< Configuration parameters */
     dmuart_baudrate_t   current_baudrate;           /**< Current baud rate */
     char               *interrupt_handler_name;     /**< dmhaman handler name (NULL = not used) */
+    dm_sw_ring_t        rx_ring;                    /**< Software ring buffer for received bytes */
+    uint32_t            rx_ring_size;               /**< Capacity of the RX ring buffer (from config) */
 };
 
 static int is_valid_context(dmdrvi_context_t context)
@@ -27,20 +30,22 @@ static int is_valid_context(dmdrvi_context_t context)
     return (context != NULL && context->magic == DMUART_CONTEXT_MAGIC);
 }
 
-/* ---- dmhaman interrupt dispatch ---- */
+/* ---- Interrupt dispatch ---- */
 
-/**
- * @brief Internal port interrupt handler that dispatches to a dmhaman-registered handler.
- */
-static void dmhaman_interrupt_handler(void *user_ptr, dmuart_instance_t instance,
-                                       dmuart_int_trigger_t trigger, uint8_t data)
+/* Dispatches port interrupt events to a dmhaman-registered handler. */
+static void internal_interrupt_handler(void *user_ptr, dmuart_instance_t instance,
+                                        dmuart_int_trigger_t trigger, uint8_t data)
 {
     dmdrvi_context_t ctx = (dmdrvi_context_t)user_ptr;
-    dmuart_interrupt_params_t params;
-    params.instance = instance;
-    params.trigger  = trigger;
-    params.data     = data;
-    dmhaman_call_handler(ctx->interrupt_handler_name, &params);
+
+    if (ctx->interrupt_handler_name != NULL)
+    {
+        dmuart_interrupt_params_t params;
+        params.instance = instance;
+        params.trigger  = trigger;
+        params.data     = data;
+        dmhaman_call_handler(ctx->interrupt_handler_name, &params);
+    }
 }
 
 /* ---- String conversion helpers ---- */
@@ -251,6 +256,8 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t conf
     const char *handler_name = dmini_get_string(config, section, "interrupt_handler", NULL);
     context->interrupt_handler_name = (handler_name != NULL) ? Dmod_StrDup(handler_name) : NULL;
 
+    context->rx_ring_size = (uint32_t)dmini_get_int(config, section, "rx_ring_size", 256);
+
     return check_config_parameters(&context->config);
 }
 
@@ -290,9 +297,13 @@ static int configure(dmdrvi_context_t context)
     ret = dmuart_port_set_loopback(c->instance, c->loopback);
     if (ret != 0) goto err;
 
-    if (c->interrupt_trigger != dmuart_int_trigger_off)
+    dmuart_int_trigger_t trigger = c->interrupt_trigger;
+    if (context->rx_ring_size > 0)
+        trigger |= dmuart_int_trigger_rx_not_empty;
+
+    if (trigger != dmuart_int_trigger_off)
     {
-        ret = dmuart_port_set_interrupt_trigger(c->instance, c->interrupt_trigger);
+        ret = dmuart_port_set_interrupt_trigger(c->instance, trigger);
         if (ret != 0) goto err;
     }
 
@@ -424,16 +435,29 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
         return NULL;
     }
 
-    /* Register interrupt handler if configured */
-    if (context->interrupt_handler_name != NULL)
+    /* Create RX ring buffer */
+    if (context->rx_ring_size > 0)
+    {
+        context->rx_ring = dm_sw_ring_create(context->rx_ring_size,
+                                              dm_sw_ring_flags_drop_old_data |
+                                              dm_sw_ring_flags_mutex_sync);
+        if (context->rx_ring == NULL)
+        {
+            DMOD_LOG_ERROR("Failed to create RX ring buffer (size=%u)\n", context->rx_ring_size);
+        }
+        else
+        {
+            dmuart_port_set_rx_ring(context->config.instance, context->rx_ring);
+        }
+    }
+
+    /* Register interrupt handler if ring buffer or dmhaman handler is active */
+    if (context->rx_ring != NULL || context->interrupt_handler_name != NULL)
     {
         if (dmuart_port_add_interrupt_handler(context->config.instance,
-                dmhaman_interrupt_handler, context) != 0)
+                internal_interrupt_handler, context) != 0)
         {
-            DMOD_LOG_ERROR("Failed to register interrupt handler '%s'\n",
-                context->interrupt_handler_name);
-            Dmod_Free(context->interrupt_handler_name);
-            context->interrupt_handler_name = NULL;
+            DMOD_LOG_ERROR("Failed to register interrupt handler\n");
         }
     }
 
@@ -466,11 +490,17 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _free, ( dmdrvi_context_t con
 {
     if (is_valid_context(context))
     {
-        if (context->interrupt_handler_name != NULL)
-        {
+        if (context->rx_ring != NULL || context->interrupt_handler_name != NULL)
             dmuart_port_remove_interrupt_handler(context->config.instance, context);
-            Dmod_Free(context->interrupt_handler_name);
+
+        if (context->rx_ring != NULL)
+        {
+            dmuart_port_set_rx_ring(context->config.instance, NULL);
+            dm_sw_ring_destroy(context->rx_ring);
+            context->rx_ring = NULL;
         }
+
+        Dmod_Free(context->interrupt_handler_name);
         dmuart_port_deinit(context->config.instance);
         context->magic = 0;
         Dmod_Free(context);
@@ -495,16 +525,12 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _close, ( dmdrvi_context_t co
 dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _read, ( dmdrvi_context_t context, void* handle, void* buffer, size_t size, uint32_t offset ))
 {
     if (!is_valid_context(context) || buffer == NULL || size == 0)
-    {
         return 0;
-    }
 
     size_t received = 0;
     int ret = dmuart_port_receive(context->config.instance, (uint8_t *)buffer, size, &received);
     if (ret != 0)
-    {
         return 0;
-    }
     return received;
 }
 

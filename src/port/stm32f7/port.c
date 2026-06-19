@@ -1,6 +1,7 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
 #include "dmod.h"
+#include "dm_sw_ring.h"
 #include "../stm32_common/stm32_common.h"
 #include "port/stm32_common_regs.h"
 #include "port/stm32f7_regs.h"
@@ -20,6 +21,9 @@ static const uint32_t uart_base_addresses[STM32F7_UART_MAX_INSTANCES] = {
 /* Per-instance interrupt handler registration */
 static dmuart_port_interrupt_handler_t irq_handlers[STM32F7_UART_MAX_INSTANCES];
 static void *irq_user_ptrs[STM32F7_UART_MAX_INSTANCES];
+
+/* Per-instance SW ring buffers — set via dmuart_port_set_rx_ring() */
+static dm_sw_ring_t rx_rings[STM32F7_UART_MAX_INSTANCES];
 
 static int validate_instance(dmuart_instance_t instance)
 {
@@ -68,6 +72,7 @@ int dmod_init(const Dmod_Config_t *Config)
     {
         irq_handlers[i] = NULL;
         irq_user_ptrs[i] = NULL;
+        rx_rings[i]      = NULL;
     }
     return 0;
 }
@@ -142,6 +147,13 @@ dmod_dmuart_port_api_declaration(1.0, int, _receive, ( dmuart_instance_t instanc
 {
     if (validate_instance(instance) != 0 || data == NULL || received == NULL) return -1;
 
+    dm_sw_ring_t ring = rx_rings[instance - 1];
+    if (ring != NULL)
+    {
+        *received = (size_t)dm_sw_ring_read(ring, data, (dm_sw_ring_capacity_t)size);
+        return 0;
+    }
+
     volatile USART_TypeDef *USART = get_usart(instance);
     *received = 0;
 
@@ -150,7 +162,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _receive, ( dmuart_instance_t instanc
         uint32_t timeout = UART_TIMEOUT_VALUE;
         while (!(USART->ISR & USART_ISR_RXNE))
         {
-            if (--timeout == 0) return 0; /* Timeout - return what we have */
+            if (--timeout == 0) return 0;
         }
 
         if (USART->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_PE))
@@ -465,27 +477,34 @@ dmod_dmuart_port_api_declaration(1.0, int, _remove_interrupt_handler,
     return 0;
 }
 
+dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
+    ( dmuart_instance_t instance, dm_sw_ring_t ring ))
+{
+    if (validate_instance(instance) != 0) return -1;
+    rx_rings[instance - 1] = ring;
+    return 0;
+}
+
 /* ---- ISR handlers ---- */
 
 static void stm32f7_uart_irq_handler(dmuart_instance_t instance)
 {
     volatile USART_TypeDef *USART = get_usart(instance);
-    dmuart_port_interrupt_handler_t handler = irq_handlers[instance - 1];
-
-    if (handler == NULL) return;
+    uint32_t idx = (uint32_t)(instance - 1);
 
     uint8_t data = 0;
     dmuart_int_trigger_t trigger = dmuart_int_trigger_off;
 
     if (USART->ISR & USART_ISR_RXNE)
     {
-        data = (uint8_t)(USART->RDR & 0xFF);
+        data = (uint8_t)(USART->RDR & 0xFF);  /* reading RDR clears RXNE */
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_rx_not_empty);
+
+        if (rx_rings[idx] != NULL)
+            dm_sw_ring_write(rx_rings[idx], &data, 1);
     }
     if (USART->ISR & USART_ISR_TXE)
-    {
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_tx_empty);
-    }
     if (USART->ISR & USART_ISR_TC)
     {
         USART->ICR |= (1U << 6); /* TCCF */
@@ -497,10 +516,9 @@ static void stm32f7_uart_irq_handler(dmuart_instance_t instance)
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_error);
     }
 
-    if (trigger != dmuart_int_trigger_off)
-    {
-        handler(irq_user_ptrs[instance - 1], instance, trigger, data);
-    }
+    dmuart_port_interrupt_handler_t handler = irq_handlers[idx];
+    if (handler != NULL && trigger != dmuart_int_trigger_off)
+        handler(irq_user_ptrs[idx], instance, trigger, data);
 }
 
 /* NVIC IRQ numbers for STM32F7 UART instances */
