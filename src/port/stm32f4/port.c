@@ -2,6 +2,8 @@
 #include "dmuart_port.h"
 #include "dmod.h"
 #include "dm_sw_ring.h"
+#include "dmclk_port.h"
+#include "port/stm32_common_regs.h"
 #include "port/stm32f4_regs.h"
 
 /* UART instance base addresses */
@@ -20,6 +22,21 @@ static void *irq_user_ptrs[STM32F4_UART_MAX_INSTANCES];
 
 /* Per-instance SW ring buffers — set via dmuart_port_set_rx_ring() */
 static dm_sw_ring_t rx_rings[STM32F4_UART_MAX_INSTANCES];
+
+/* NVIC IRQ numbers for STM32F4 UART instances (must match DMOD_IRQ_HANDLER list below) */
+static const uint32_t uart_irqn[STM32F4_UART_MAX_INSTANCES] = {
+    37, 38, 39, 52, 53, 71
+};
+
+static void nvic_enable_irq(uint32_t irqn)
+{
+    NVIC_ISER[irqn >> 5U] = 1U << (irqn & 0x1FU);
+}
+
+static void nvic_disable_irq(uint32_t irqn)
+{
+    NVIC_ICER[irqn >> 5U] = 1U << (irqn & 0x1FU);
+}
 
 /* Timeout value */
 #define STM32F4_UART_TIMEOUT    10000U
@@ -55,13 +72,36 @@ static volatile STM32F4_USART_TypeDef *get_usart(dmuart_instance_t instance)
     return (volatile STM32F4_USART_TypeDef *)uart_base_addresses[instance - 1];
 }
 
+/* Convert a 3-bit RCC_CFGR PPREx field to its division factor.
+ * Encoding (same on STM32F4/F7): MSB=0 -> not divided (/1);
+ * 100->/2, 101->/4, 110->/8, 111->/16. */
+static uint32_t apb_prescaler_div(uint32_t ppre_bits)
+{
+    if ((ppre_bits & 0x4U) == 0U) return 1U;
+    return 2U << (ppre_bits & 0x3U);
+}
+
 static uint32_t get_uart_clock(dmuart_instance_t instance)
 {
+    volatile STM32F4_RCC_TypeDef *RCC = (STM32F4_RCC_TypeDef *)STM32F4_RCC_BASE;
+    uint32_t cfgr = RCC->CFGR;
+
+    /* Query the real, currently-configured core clock from dmclk instead of
+     * assuming the reset-default HSI — dmclk may have switched to a PLL/HSE
+     * derived frequency before this module is configured. */
+    uint32_t sysclk = (uint32_t)dmclk_port_get_current_frequency();
+    if (sysclk == 0U)
+        sysclk = HSI_VALUE; /* defensive fallback, should not normally happen */
+
+    /* USART1 and USART6 are on APB2, others are on APB1 */
     if (instance == 1 || instance == 6)
     {
-        return STM32F4_APB2_FREQ;
+        uint32_t ppre2 = (cfgr & RCC_CFGR_PPRE2_Msk) >> RCC_CFGR_PPRE2_Pos;
+        return sysclk / apb_prescaler_div(ppre2);
     }
-    return STM32F4_APB1_FREQ;
+
+    uint32_t ppre1 = (cfgr & RCC_CFGR_PPRE1_Msk) >> RCC_CFGR_PPRE1_Pos;
+    return sysclk / apb_prescaler_div(ppre1);
 }
 
 static void enable_uart_clock(dmuart_instance_t instance)
@@ -84,7 +124,7 @@ static void enable_uart_clock(dmuart_instance_t instance)
 
 int dmod_init(const Dmod_Config_t *Config)
 {
-    Dmod_Printf("DMUART port module initialized (STM32F4)\n");
+    Dmod_Printf("DMUART port module initialized (STM32F4) [build: %s %s]\n", __DATE__, __TIME__);
     for (int i = 0; i < STM32F4_UART_MAX_INSTANCES; i++)
     {
         irq_handlers[i] = NULL;
@@ -130,6 +170,8 @@ dmod_dmuart_port_api_declaration(1.0, int, _deinit, ( dmuart_instance_t instance
 
     volatile STM32F4_USART_TypeDef *USART = get_usart(instance);
     USART->CR1 &= ~(STM32F4_USART_CR1_UE | STM32F4_USART_CR1_TE | STM32F4_USART_CR1_RE);
+
+    nvic_disable_irq(uart_irqn[instance - 1]);
 
     return 0;
 }
@@ -416,6 +458,14 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_interrupt_trigger, ( dmuart_inst
         USART->CR1 |= STM32F4_USART_CR1_IDLEIE;
     if (trigger & dmuart_int_trigger_error)
         USART->CR3 |= STM32F4_USART_CR3_EIE;
+
+    /* Peripheral-level enable bits above only make the USART assert its
+     * interrupt line; the NVIC must also unmask that line or the CPU will
+     * never service it. */
+    if (trigger != dmuart_int_trigger_off)
+        nvic_enable_irq(uart_irqn[instance - 1]);
+    else
+        nvic_disable_irq(uart_irqn[instance - 1]);
 
     return 0;
 }

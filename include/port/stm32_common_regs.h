@@ -80,10 +80,20 @@ typedef struct {
     volatile uint32_t APB2ENR;
 } UART_RCC_TypeDef;
 
+/* RCC_CFGR APB prescaler fields (same layout on STM32F4/F7) */
+#define RCC_CFGR_PPRE1_Pos      10U
+#define RCC_CFGR_PPRE1_Msk      (0x7U << RCC_CFGR_PPRE1_Pos)
+#define RCC_CFGR_PPRE2_Pos      13U
+#define RCC_CFGR_PPRE2_Msk      (0x7U << RCC_CFGR_PPRE2_Pos)
+
 /* Common clock values */
 #define HSI_VALUE               16000000U   /**< HSI clock value in Hz */
 
 /* Timeout values */
 #define UART_TIMEOUT_VALUE      10000U      /**< Default timeout for UART operations */
+
+/* NVIC Interrupt Set/Clear-Enable registers (ARMv7-M, common to Cortex-M4/M7) */
+#define NVIC_ISER                ((volatile uint32_t *)0xE000E100UL)
+#define NVIC_ICER                ((volatile uint32_t *)0xE000E180UL)
 
 #endif // DMUART_STM32_COMMON_REGS_H

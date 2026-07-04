@@ -399,7 +399,7 @@ static int read_configuration(dmdrvi_context_t context, int command, void *arg)
 
 int dmod_init(const Dmod_Config_t *Config)
 {
-    DMOD_LOG_INFO("DMUART interface module initialized\n");
+    DMOD_LOG_INFO("DMUART interface module initialized [build: %s %s]\n", __DATE__, __TIME__);
     return 0;
 }
 
@@ -438,9 +438,13 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
     /* Create RX ring buffer */
     if (context->rx_ring_size > 0)
     {
+        /* No dm_sw_ring_flags_mutex_sync: this ring is written to directly from
+         * the UART RX interrupt handler, and taking a FreeRTOS mutex from ISR
+         * context is invalid (asserts in vPortEnterCritical). The ring's
+         * lock-free critical-section path (used when no mutex is configured)
+         * is safe for this single-ISR-producer / task-consumer pattern. */
         context->rx_ring = dm_sw_ring_create(context->rx_ring_size,
-                                              dm_sw_ring_flags_drop_old_data |
-                                              dm_sw_ring_flags_mutex_sync);
+                                              dm_sw_ring_flags_drop_old_data);
         if (context->rx_ring == NULL)
         {
             DMOD_LOG_ERROR("Failed to create RX ring buffer (size=%u)\n", context->rx_ring_size);
@@ -542,6 +546,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _write, ( dmdrvi_context_t 
     }
 
     int ret = dmuart_port_transmit(context->config.instance, (const uint8_t *)buffer, size);
+
     if (ret != 0)
     {
         return 0;
