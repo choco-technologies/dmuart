@@ -399,7 +399,7 @@ static int read_configuration(dmdrvi_context_t context, int command, void *arg)
 
 int dmod_init(const Dmod_Config_t *Config)
 {
-    DMOD_LOG_INFO("DMUART interface module initialized [build: %s %s]\n", __DATE__, __TIME__);
+    DMOD_LOG_INFO("DMUART interface module initialized\n");
     return 0;
 }
 

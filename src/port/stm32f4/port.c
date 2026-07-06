@@ -124,7 +124,7 @@ static void enable_uart_clock(dmuart_instance_t instance)
 
 int dmod_init(const Dmod_Config_t *Config)
 {
-    Dmod_Printf("DMUART port module initialized (STM32F4) [build: %s %s]\n", __DATE__, __TIME__);
+    Dmod_Printf("DMUART port module initialized (STM32F4)\n");
     for (int i = 0; i < STM32F4_UART_MAX_INSTANCES; i++)
     {
         irq_handlers[i] = NULL;
@@ -519,6 +519,12 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
 
 /* ---- ISR handlers ---- */
 
+/* Upper bound on bytes drained from DR per ISR entry. DR itself holds only
+ * one byte at a time, but servicing latency can let several bytes complete
+ * reception before the ISR gets to run, so we keep draining while RXNE is
+ * set instead of handling a single byte per interrupt. */
+#define STM32F4_UART_RX_DRAIN_MAX   32U
+
 static void stm32f4_uart_irq_handler(dmuart_instance_t instance)
 {
     volatile STM32F4_USART_TypeDef *USART = get_usart(instance);
@@ -529,11 +535,19 @@ static void stm32f4_uart_irq_handler(dmuart_instance_t instance)
 
     if (USART->SR & STM32F4_USART_SR_RXNE)
     {
-        data = (uint8_t)(USART->DR & 0xFF);  /* reading DR clears RXNE */
+        uint8_t rx_buf[STM32F4_UART_RX_DRAIN_MAX];
+        uint32_t rx_count = 0;
+
+        while ((USART->SR & STM32F4_USART_SR_RXNE) && rx_count < STM32F4_UART_RX_DRAIN_MAX)
+        {
+            rx_buf[rx_count++] = (uint8_t)(USART->DR & 0xFF);  /* reading DR clears RXNE */
+        }
+
+        data = rx_buf[rx_count - 1];
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_rx_not_empty);
 
         if (rx_rings[idx] != NULL)
-            dm_sw_ring_write(rx_rings[idx], &data, 1);
+            dm_sw_ring_write(rx_rings[idx], rx_buf, (dm_sw_ring_capacity_t)rx_count);
     }
     if (USART->SR & STM32F4_USART_SR_TXE)
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_tx_empty);

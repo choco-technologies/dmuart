@@ -72,22 +72,15 @@ static uint32_t get_uart_clock(dmuart_instance_t instance)
     if (sysclk == 0U)
         sysclk = HSI_VALUE; /* defensive fallback, should not normally happen */
 
-    uint32_t pclk;
     /* USART1 and USART6 are on APB2, others are on APB1 */
     if (instance == 1 || instance == 6)
     {
         uint32_t ppre2 = (cfgr & RCC_CFGR_PPRE2_Msk) >> RCC_CFGR_PPRE2_Pos;
-        pclk = sysclk / apb_prescaler_div(ppre2);
-        DMOD_LOG_VERBOSE("UART%u clock: sysclk=%u cfgr=0x%08X ppre2=%u pclk=%u\n",
-            (unsigned)instance, (unsigned)sysclk, (unsigned)cfgr, (unsigned)ppre2, (unsigned)pclk);
-        return pclk;
+        return sysclk / apb_prescaler_div(ppre2);
     }
 
     uint32_t ppre1 = (cfgr & RCC_CFGR_PPRE1_Msk) >> RCC_CFGR_PPRE1_Pos;
-    pclk = sysclk / apb_prescaler_div(ppre1);
-    DMOD_LOG_VERBOSE("UART%u clock: sysclk=%u cfgr=0x%08X ppre1=%u pclk=%u\n",
-        (unsigned)instance, (unsigned)sysclk, (unsigned)cfgr, (unsigned)ppre1, (unsigned)pclk);
-    return pclk;
+    return sysclk / apb_prescaler_div(ppre1);
 }
 
 static void enable_uart_clock(dmuart_instance_t instance)
@@ -112,7 +105,7 @@ static void enable_uart_clock(dmuart_instance_t instance)
 
 int dmod_init(const Dmod_Config_t *Config)
 {
-    Dmod_Printf("DMUART port module initialized (STM32F7) [build: %s %s]\n", __DATE__, __TIME__);
+    Dmod_Printf("DMUART port module initialized (STM32F7)\n");
     for (int i = 0; i < STM32F7_UART_MAX_INSTANCES; i++)
     {
         irq_handlers[i] = NULL;
@@ -542,6 +535,12 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
 
 /* ---- ISR handlers ---- */
 
+/* Upper bound on bytes drained from RDR per ISR entry. RDR itself holds only
+ * one byte at a time, but servicing latency can let several bytes complete
+ * reception before the ISR gets to run, so we keep draining while RXNE is
+ * set instead of handling a single byte per interrupt. */
+#define STM32F7_UART_RX_DRAIN_MAX   32U
+
 static void stm32f7_uart_irq_handler(dmuart_instance_t instance)
 {
     volatile USART_TypeDef *USART = get_usart(instance);
@@ -552,11 +551,19 @@ static void stm32f7_uart_irq_handler(dmuart_instance_t instance)
 
     if (USART->ISR & USART_ISR_RXNE)
     {
-        data = (uint8_t)(USART->RDR & 0xFF);  /* reading RDR clears RXNE */
+        uint8_t rx_buf[STM32F7_UART_RX_DRAIN_MAX];
+        uint32_t rx_count = 0;
+
+        while ((USART->ISR & USART_ISR_RXNE) && rx_count < STM32F7_UART_RX_DRAIN_MAX)
+        {
+            rx_buf[rx_count++] = (uint8_t)(USART->RDR & 0xFF);  /* reading RDR clears RXNE */
+        }
+
+        data = rx_buf[rx_count - 1];
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_rx_not_empty);
 
         if (rx_rings[idx] != NULL)
-            dm_sw_ring_write(rx_rings[idx], &data, 1);
+            dm_sw_ring_write(rx_rings[idx], rx_buf, (dm_sw_ring_capacity_t)rx_count);
     }
     if (USART->ISR & USART_ISR_TXE)
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_tx_empty);
