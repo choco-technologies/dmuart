@@ -16,6 +16,8 @@ All parameters are in the `[dmuart]` section:
 | `stopbits` | string | "1" | Stop bits: "1", "2" |
 | `flowcontrol` | string | "none" | Flow control: "none", "rts_cts" |
 | `instance` | integer | 1 | UART instance number (1-8) |
+| `rx_ring_size` | integer | 256 | Capacity of the RX ring buffer, in bytes (0 disables it) |
+| `rx_ring_wait_mode` | string | "some_data" | RX ring read-wait behavior: "none" (return immediately), "some_data" (wait for at least one byte), "all_data" (wait for the full requested length) |
 
 ## Examples
 

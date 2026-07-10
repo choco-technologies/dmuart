@@ -23,6 +23,7 @@ struct dmdrvi_context
     char               *interrupt_handler_name;     /**< dmhaman handler name (NULL = not used) */
     dm_sw_ring_t        rx_ring;                    /**< Software ring buffer for received bytes */
     uint32_t            rx_ring_size;               /**< Capacity of the RX ring buffer (from config) */
+    dm_sw_ring_flags_t  rx_ring_wait_flags;          /**< RX ring read-wait behavior (from config) */
 };
 
 static int is_valid_context(dmdrvi_context_t context)
@@ -118,6 +119,16 @@ static dmuart_int_trigger_t string_to_interrupt_trigger(const char *s)
         if (strcmp(s, "error")        == 0) return dmuart_int_trigger_error;
     }
     return dmuart_int_trigger_off;
+}
+
+static dm_sw_ring_flags_t string_to_rx_ring_wait_flags(const char *s)
+{
+    if (s != NULL)
+    {
+        if (strcmp(s, "none")     == 0) return 0;
+        if (strcmp(s, "all_data") == 0) return dm_sw_ring_flags_wait_for_all_data;
+    }
+    return dm_sw_ring_flags_wait_for_some_data;
 }
 
 static dmuart_word_length_t int_to_word_length(int val)
@@ -257,6 +268,8 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t conf
     context->interrupt_handler_name = (handler_name != NULL) ? Dmod_StrDup(handler_name) : NULL;
 
     context->rx_ring_size = (uint32_t)dmini_get_int(config, section, "rx_ring_size", 256);
+    context->rx_ring_wait_flags = string_to_rx_ring_wait_flags(
+        dmini_get_string(config, section, "rx_ring_wait_mode", "some_data"));
 
     return check_config_parameters(&context->config);
 }
@@ -444,7 +457,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
          * lock-free critical-section path (used when no mutex is configured)
          * is safe for this single-ISR-producer / task-consumer pattern. */
         context->rx_ring = dm_sw_ring_create(context->rx_ring_size,
-                                              dm_sw_ring_flags_drop_old_data);
+                                              dm_sw_ring_flags_drop_old_data | context->rx_ring_wait_flags);
         if (context->rx_ring == NULL)
         {
             DMOD_LOG_ERROR("Failed to create RX ring buffer (size=%u)\n", context->rx_ring_size);
