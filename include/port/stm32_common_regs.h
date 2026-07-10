@@ -96,4 +96,8 @@ typedef struct {
 #define NVIC_ISER                ((volatile uint32_t *)0xE000E100UL)
 #define NVIC_ICER                ((volatile uint32_t *)0xE000E180UL)
 
+/* NVIC Interrupt Priority Registers (ARMv7-M, common to Cortex-M4/M7).
+ * Byte-addressable, one 8-bit entry per external interrupt line. */
+#define NVIC_IP                   ((volatile uint8_t *)0xE000E400UL)
+
 #endif // DMUART_STM32_COMMON_REGS_H

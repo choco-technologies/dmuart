@@ -44,6 +44,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 dmod_link_modules(${DMOD_MODULE_NAME}
     dm_sw_ring
     dmclk_port
+    dmosi
 )
 
 target_include_directories(${DMOD_MODULE_NAME} BEFORE PRIVATE

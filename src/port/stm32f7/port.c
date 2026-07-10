@@ -1,6 +1,7 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
 #include "dmod.h"
+#include "dmosi.h"
 #include "dm_sw_ring.h"
 #include "dmclk_port.h"
 #include "../stm32_common/stm32_common.h"
@@ -33,6 +34,13 @@ static const uint32_t uart_irqn[STM32F7_UART_MAX_INSTANCES] = {
 
 static void nvic_enable_irq(uint32_t irqn)
 {
+    /* NVIC priority defaults to 0 (highest, non-maskable by FreeRTOS critical
+     * sections) after reset. Any interrupt that may call dmosi/FreeRTOS
+     * ISR-safe API (as this one does, via dm_sw_ring signaling a semaphore
+     * from within the IRQ handler) must be configured at or below the
+     * priority dmosi_get_min_interrupt_priority() reports, or the RTOS
+     * cannot safely mask it during its own critical sections. */
+    NVIC_IP[irqn] = (uint8_t)dmosi_get_min_interrupt_priority();
     NVIC_ISER[irqn >> 5U] = 1U << (irqn & 0x1FU);
 }
 
