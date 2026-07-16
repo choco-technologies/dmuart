@@ -502,30 +502,28 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
         }
     }
 
+    return context;
+}
+
+dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _path_ready, ( dmdrvi_context_t context, const dmdrvi_dev_num_t* dev_num, const char* path ))
+{
+    if (!is_valid_context(context) || path == NULL)
+        return;
+
     /* Announce this device to dmtty via dmhaman, without linking directly
      * against dmtty, so that a TTY device node gets attached on top of it if
      * dmtty is present. UART is inherently stream/line-discipline compatible,
      * so every instance is announced. */
-    char path_buf[DMTTY_MAX_PATH_LEN + 1];
-    if (dmdrvi_get_path(context, dev_num, path_buf, sizeof(path_buf)) == 0)
+    context->tty_path = Dmod_StrDup(path);
+    if (context->tty_path != NULL)
     {
-        context->tty_path = Dmod_StrDup(path_buf);
-        if (context->tty_path != NULL)
-        {
-            dmtty_device_available_params_t tty_params = {
-                .path  = context->tty_path,
-                .name  = NULL,
-                .flags = 0,
-            };
-            dmhaman_call_handler(DMTTY_HANDLER_NAME_DEVICE_AVAILABLE, &tty_params);
-        }
+        dmtty_device_available_params_t tty_params = {
+            .path  = context->tty_path,
+            .name  = NULL,
+            .flags = 0,
+        };
+        dmhaman_call_handler(DMTTY_HANDLER_NAME_DEVICE_AVAILABLE, &tty_params);
     }
-    else
-    {
-        DMOD_LOG_WARN("Failed to resolve device path for TTY announcement\n");
-    }
-
-    return context;
 }
 
 dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _free, ( dmdrvi_context_t context ))
