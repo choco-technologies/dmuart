@@ -103,6 +103,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmini
     dmhaman
     dm_sw_ring
+    dmtty
 )
 
 target_link_libraries(${DMOD_MODULE_NAME} 

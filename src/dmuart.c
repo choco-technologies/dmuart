@@ -4,6 +4,7 @@
 #include "dmuart_port.h"
 #include "dmdrvi.h"
 #include "dmhaman.h"
+#include "dmtty_types.h"
 #include "dmini.h"
 #include "dm_sw_ring.h"
 #include <errno.h>
@@ -24,6 +25,7 @@ struct dmdrvi_context
     dm_sw_ring_t        rx_ring;                    /**< Software ring buffer for received bytes */
     uint32_t            rx_ring_size;               /**< Capacity of the RX ring buffer (from config) */
     dm_sw_ring_flags_t  rx_ring_wait_flags;          /**< RX ring read-wait behavior (from config) */
+    char               *tty_path;                    /**< Absolute dmdevfs path announced to dmtty (NULL = not announced) */
 };
 
 static int is_valid_context(dmdrvi_context_t context)
@@ -500,6 +502,29 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
         }
     }
 
+    /* Announce this device to dmtty via dmhaman, without linking directly
+     * against dmtty, so that a TTY device node gets attached on top of it if
+     * dmtty is present. UART is inherently stream/line-discipline compatible,
+     * so every instance is announced. */
+    char path_buf[DMTTY_MAX_PATH_LEN + 1];
+    if (dmdrvi_get_path(context, dev_num, path_buf, sizeof(path_buf)) == 0)
+    {
+        context->tty_path = Dmod_StrDup(path_buf);
+        if (context->tty_path != NULL)
+        {
+            dmtty_device_available_params_t tty_params = {
+                .path  = context->tty_path,
+                .name  = NULL,
+                .flags = 0,
+            };
+            dmhaman_call_handler(DMTTY_HANDLER_NAME_DEVICE_AVAILABLE, &tty_params);
+        }
+    }
+    else
+    {
+        DMOD_LOG_WARN("Failed to resolve device path for TTY announcement\n");
+    }
+
     return context;
 }
 
@@ -507,6 +532,14 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _free, ( dmdrvi_context_t con
 {
     if (is_valid_context(context))
     {
+        if (context->tty_path != NULL)
+        {
+            dmtty_device_unavailable_params_t tty_params = { .path = context->tty_path };
+            dmhaman_call_handler(DMTTY_HANDLER_NAME_DEVICE_UNAVAILABLE, &tty_params);
+            Dmod_Free(context->tty_path);
+            context->tty_path = NULL;
+        }
+
         if (context->rx_ring != NULL || context->interrupt_handler_name != NULL)
             dmuart_port_remove_interrupt_handler(context->config.instance, context);
 
