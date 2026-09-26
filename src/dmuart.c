@@ -426,7 +426,7 @@ int dmod_deinit(void)
 
 /* ---- DMDRVI interface ---- */
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_context_t config, dmdrvi_dev_num_t* dev_num ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, dmdrvi_context_t, _create, ( dmini_context_t config, dmdrvi_dev_num_t* dev_num ))
 {
     if (config == NULL || dev_num == NULL)
     {
@@ -505,7 +505,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, dmdrvi_context_t, _create, ( dmini_
     return context;
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _path_ready, ( dmdrvi_context_t context, const dmdrvi_dev_num_t* dev_num, const char* path ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, void, _path_ready, ( dmdrvi_context_t context, const dmdrvi_dev_num_t* dev_num, const char* path ))
 {
     if (!is_valid_context(context) || path == NULL)
         return;
@@ -526,7 +526,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _path_ready, ( dmdrvi_context
     }
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _free, ( dmdrvi_context_t context ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, void, _free, ( dmdrvi_context_t context ))
 {
     if (is_valid_context(context))
     {
@@ -555,8 +555,9 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _free, ( dmdrvi_context_t con
     }
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void*, _open, ( dmdrvi_context_t context, int flags ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, void*, _open, ( dmdrvi_context_t context, int flags, const dmdrvi_dev_num_t* dev_num ))
 {
+    (void)dev_num; // dmuart exposes a single device per context
     if (!is_valid_context(context))
     {
         DMOD_LOG_ERROR("Invalid DMDRVI context in dmuart_dmdrvi_open\n");
@@ -565,13 +566,23 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void*, _open, ( dmdrvi_context_t co
     return context;
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, void, _close, ( dmdrvi_context_t context, void* handle ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, void, _close, ( dmdrvi_context_t context, void* handle ))
 {
     /* No specific action needed to close the UART device handle */
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _read, ( dmdrvi_context_t context, void* handle, void* buffer, size_t size, uint32_t offset ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, dmdrvi_ssize_t, _read, ( dmdrvi_context_t context, void* handle, void* buffer, size_t size, dmdrvi_offset_t offset ))
 {
+    if (offset < 0)
+    {
+        return -EINVAL;
+    }
+    if (size > (size_t)INT64_MAX)
+    {
+        return -EOVERFLOW;
+    }
+    /* offset is unused: dmuart is a stream device, not seekable. */
+
     if (!is_valid_context(context) || buffer == NULL || size == 0)
         return 0;
 
@@ -579,11 +590,21 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _read, ( dmdrvi_context_t c
     int ret = dmuart_port_receive(context->config.instance, (uint8_t *)buffer, size, &received);
     if (ret != 0)
         return 0;
-    return received;
+    return (dmdrvi_ssize_t)received;
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _write, ( dmdrvi_context_t context, void* handle, const void* buffer, size_t size, uint32_t offset ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, dmdrvi_ssize_t, _write, ( dmdrvi_context_t context, void* handle, const void* buffer, size_t size, dmdrvi_offset_t offset ))
 {
+    if (offset < 0)
+    {
+        return -EINVAL;
+    }
+    if (size > (size_t)INT64_MAX)
+    {
+        return -EOVERFLOW;
+    }
+    /* offset is unused: dmuart is a stream device, not seekable. */
+
     if (!is_valid_context(context) || buffer == NULL || size == 0)
     {
         return 0;
@@ -595,10 +616,10 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, size_t, _write, ( dmdrvi_context_t 
     {
         return 0;
     }
-    return size;
+    return (dmdrvi_ssize_t)size;
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _ioctl, ( dmdrvi_context_t context, void* handle, int command, void* arg ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, int, _ioctl, ( dmdrvi_context_t context, void* handle, int command, void* arg ))
 {
     int ret = 0;
     if (!is_valid_context(context))
@@ -660,7 +681,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _ioctl, ( dmdrvi_context_t con
     return ret;
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _flush, ( dmdrvi_context_t context, void* handle ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, int, _flush, ( dmdrvi_context_t context, void* handle ))
 {
     if (!is_valid_context(context))
     {
@@ -671,7 +692,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _flush, ( dmdrvi_context_t con
     return dmuart_port_flush(context->config.instance);
 }
 
-dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _stat, ( dmdrvi_context_t context, const char* path, dmdrvi_stat_t* stat ))
+dmod_dmdrvi_dif_api_declaration(2.0, dmuart, int, _stat, ( dmdrvi_context_t context, const char* path, dmdrvi_stat_t* stat ))
 {
     if (!is_valid_context(context) || stat == NULL)
     {
@@ -679,7 +700,7 @@ dmod_dmdrvi_dif_api_declaration(1.0, dmuart, int, _stat, ( dmdrvi_context_t cont
         return -EINVAL;
     }
 
-    stat->size = 0; /* Stream device, no fixed size */
+    stat->size = (dmdrvi_size_t)0; /* Stream device, no fixed size */
     stat->mode = 0666; /* Read-write permissions */
     return 0;
 }
