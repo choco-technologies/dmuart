@@ -628,10 +628,12 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmuart, int, _ioctl, ( dmdrvi_context_t con
         return -EINVAL;
     }
 
-    if (command >= dmuart_ioctl_cmd_max)
+    /* Not ours - e.g. dmdevfs probing every node with the standard monitor/
+     * block commands. -ENOTTY is dmdrvi's "not implemented" answer, not an
+     * error worth logging. */
+    if (command < DMUART_IOCTL_BASE || command >= dmuart_ioctl_cmd_max)
     {
-        DMOD_LOG_ERROR("Invalid ioctl command %d\n", command);
-        return -EINVAL;
+        return -ENOTTY;
     }
 
     if (command == dmuart_ioctl_cmd_reconfigure)

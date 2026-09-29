@@ -100,6 +100,10 @@ int dmuart_dmdrvi_ioctl(dmdrvi_context_t context, void* handle, int command, voi
 
 Performs I/O control operations.
 
+dmuart's own commands are numbered from `DMUART_IOCTL_BASE` (`0x1000`, dmdrvi's
+`DMDRVI_IOCTL_CUSTOM_BASE`). Any other command - including dmdrvi's standard
+network, block and monitor commands - returns `-ENOTTY`.
+
 **Commands (dmuart_ioctl_cmd_t):**
 
 | Command | Direction | Arg Type | Description |
