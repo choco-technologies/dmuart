@@ -95,11 +95,19 @@ typedef enum
 } dmuart_int_trigger_t;
 
 /**
+ * @brief Base of the dmuart private ioctl range (== DMDRVI_IOCTL_CUSTOM_BASE)
+ *
+ * Numbers below it belong to dmdrvi's standard commands (network, block,
+ * monitor), which dmuart does not implement and answers with -ENOTTY.
+ */
+#define DMUART_IOCTL_BASE   0x1000
+
+/**
  * @brief IOCTL commands for DMUART device
  */
 typedef enum
 {
-    dmuart_ioctl_cmd_get_baudrate = 1,          /**< Get current baud rate */
+    dmuart_ioctl_cmd_get_baudrate = DMUART_IOCTL_BASE, /**< Get current baud rate */
     dmuart_ioctl_cmd_set_baudrate,              /**< Set baud rate */
     dmuart_ioctl_cmd_get_word_length,           /**< Get word length */
     dmuart_ioctl_cmd_set_word_length,           /**< Set word length */
