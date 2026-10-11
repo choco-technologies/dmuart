@@ -69,4 +69,18 @@ dmod_dmuart_port_api(1.0, int, _remove_interrupt_handler,
 dmod_dmuart_port_api(1.0, int, _set_rx_ring,
     ( dmuart_instance_t instance, dm_sw_ring_t ring ) );
 
+/* --- Receiving by DMA --- */
+
+/**
+ * @brief Allow (or forbid) receiving by DMA for the next set_rx_ring()
+ *
+ * A port that can receive by DMA does so by default. Forbidding it makes the
+ * instance receive by interrupt - for a platform whose DMA does not serve the
+ * UART (e.g. an emulator). Call it before dmuart_port_set_rx_ring().
+ * Ports without DMA receive do nothing.
+ *
+ * @return 0 on success, negative on an invalid instance
+ */
+dmod_dmuart_port_api(1.0, int, _set_rx_dma, ( dmuart_instance_t instance, bool enabled ) );
+
 #endif // DMUART_PORT_H
