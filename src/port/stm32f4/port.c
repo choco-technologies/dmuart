@@ -525,6 +525,12 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
     return 0;
 }
 
+dmod_dmuart_port_api_declaration(1.0, int, _set_rx_dma, ( dmuart_instance_t instance, bool enabled ))
+{
+    (void)enabled;                          /* (receives by interrupt only) */
+    return validate_instance(instance);
+}
+
 /* ---- ISR handlers ---- */
 
 /* Upper bound on bytes drained from DR per ISR entry. DR itself holds only

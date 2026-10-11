@@ -80,6 +80,7 @@ typedef struct
 } rx_dma_t;
 
 static rx_dma_t rx_dma[STM32F7_UART_MAX_INSTANCES];
+static bool rx_dma_forbidden[STM32F7_UART_MAX_INSTANCES];    /* receive by interrupt (dmuart_port_set_rx_dma()) */
 
 /* NVIC IRQ numbers for STM32F7 UART instances (must match DMOD_IRQ_HANDLER list below) */
 static const uint32_t uart_irqn[STM32F7_UART_MAX_INSTANCES] = {
@@ -193,6 +194,7 @@ int dmod_init(const Dmod_Config_t *Config)
         irq_user_ptrs[i] = NULL;
         rx_rings[i]      = NULL;
         memset(&rx_dma[i], 0, sizeof(rx_dma[i]));
+        rx_dma_forbidden[i] = false;
     }
     return 0;
 }
@@ -771,8 +773,15 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
     if (ring == NULL)
         rx_dma_stop(instance);
     rx_rings[instance - 1] = ring;
-    if (ring != NULL)
+    if (ring != NULL && !rx_dma_forbidden[instance - 1])
         (void)rx_dma_start(instance);       /* (no stream: by interrupt) */
+    return 0;
+}
+
+dmod_dmuart_port_api_declaration(1.0, int, _set_rx_dma, ( dmuart_instance_t instance, bool enabled ))
+{
+    if (validate_instance(instance) != 0) return -1;
+    rx_dma_forbidden[instance - 1] = !enabled;
     return 0;
 }
 

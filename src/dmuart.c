@@ -25,6 +25,7 @@ struct dmdrvi_context
     dm_sw_ring_t        rx_ring;                    /**< Software ring buffer for received bytes */
     uint32_t            rx_ring_size;               /**< Capacity of the RX ring buffer (from config) */
     dm_sw_ring_flags_t  rx_ring_wait_flags;          /**< RX ring read-wait behavior (from config) */
+    bool                rx_dma;                      /**< Receive by DMA when the port can (from config) */
     char               *tty_path;                    /**< Absolute dmdevfs path announced to dmtty (NULL = not announced) */
 };
 
@@ -272,6 +273,7 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t conf
     context->rx_ring_size = (uint32_t)dmini_get_int(config, section, "rx_ring_size", 256);
     context->rx_ring_wait_flags = string_to_rx_ring_wait_flags(
         dmini_get_string(config, section, "rx_ring_wait_mode", "some_data"));
+    context->rx_dma = dmini_get_int(config, section, "rx_dma", 1) != 0;
 
     return check_config_parameters(&context->config);
 }
@@ -466,6 +468,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmuart, dmdrvi_context_t, _create, ( dmini_
         }
         else
         {
+            (void)dmuart_port_set_rx_dma(context->config.instance, context->rx_dma);
             dmuart_port_set_rx_ring(context->config.instance, context->rx_ring);
         }
     }
