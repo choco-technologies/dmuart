@@ -1,9 +1,12 @@
 #define DMOD_ENABLE_REGISTRATION    ON
 #include "dmuart_port.h"
 #include "dmod.h"
+#include <string.h>
 #include "dmosi.h"
 #include "dm_sw_ring.h"
 #include "dmclk_port.h"
+#include "dmdma_lease.h"
+#include "dmheap.h"
 #include "../stm32_common/stm32_common.h"
 #include "port/stm32_common_regs.h"
 #include "port/stm32f7_regs.h"
@@ -26,6 +29,57 @@ static void *irq_user_ptrs[STM32F7_UART_MAX_INSTANCES];
 
 /* Per-instance SW ring buffers — set via dmuart_port_set_rx_ring() */
 static dm_sw_ring_t rx_rings[STM32F7_UART_MAX_INSTANCES];
+
+/*
+ * ---- RX by DMA ----
+ *
+ * The STM32F7's USART has no RX FIFO: at 921600 baud a byte has to be read
+ * within ~11 us of the next one finishing, or the USART overruns and drops
+ * it. An interrupt per byte cannot promise that - it runs at the priority
+ * the RTOS masks in its critical sections (the ring's semaphores are
+ * signalled from it), so a critical section or another interrupt now and
+ * then delays it past that. So when an instance gets an RX ring, its bytes
+ * are received by DMA into a circular buffer instead - the hardware keeps
+ * up whatever the CPU does - and moved from there into the ring when the
+ * line goes idle, and at every half of the buffer (a stream that never
+ * pauses): a delay up to half the buffer's time (~5 ms) loses nothing.
+ * Without a free stream (dmdma not there, the streams leased) the instance
+ * receives by interrupt, as before.
+ */
+#define RX_DMA_BUFFER_SIZE      1024U       /* Bytes: a multiple of the cache line (32) */
+#define RX_DMA_ALIGNMENT        32U
+#define RX_DMA_HEAP_NAME        "dma"       /* dmod-boot's DMA heap: the DTCM, never cached */
+
+#define USART_CR1_RXNEIE_BIT    (1U << 5)
+#define USART_CR1_IDLEIE_BIT    (1U << 4)
+#define USART_CR3_EIE_BIT       (1U << 0)
+#define USART_CR3_DMAR_BIT      (1U << 6)
+#define USART_ISR_IDLE_BIT      (1U << 4)
+#define USART_ICR_IDLECF_BIT    (1U << 4)
+
+/* The RX streams of the instances (RM0385, DMA request mapping): controller (0: DMA1), preferred and
+ * alternate stream, channel */
+static const uint8_t rx_dma_map[STM32F7_UART_MAX_INSTANCES][4] = {
+    { 1, 2, 5, 4 },     /* USART1_RX: DMA2 stream 2 or 5, channel 4 */
+    { 0, 5, 5, 4 },     /* USART2_RX: DMA1 stream 5, channel 4 */
+    { 0, 1, 1, 4 },     /* USART3_RX: DMA1 stream 1, channel 4 */
+    { 0, 2, 2, 4 },     /* UART4_RX:  DMA1 stream 2, channel 4 */
+    { 0, 0, 0, 4 },     /* UART5_RX:  DMA1 stream 0, channel 4 */
+    { 1, 1, 2, 5 },     /* USART6_RX: DMA2 stream 1 or 2, channel 5 */
+    { 0, 3, 3, 5 },     /* UART7_RX:  DMA1 stream 3, channel 5 */
+    { 0, 6, 6, 5 },     /* UART8_RX:  DMA1 stream 6, channel 5 */
+};
+
+typedef struct
+{
+    dmdma_lease_t   lease;              /* NULL: received by interrupt */
+    uint8_t*        buffer;
+    bool            from_dma_heap;      /* Never cached; else invalidated before it is read */
+    uint32_t        tail;               /* What of the buffer was moved into the ring */
+    volatile bool   draining;
+} rx_dma_t;
+
+static rx_dma_t rx_dma[STM32F7_UART_MAX_INSTANCES];
 
 /* NVIC IRQ numbers for STM32F7 UART instances (must match DMOD_IRQ_HANDLER list below) */
 static const uint32_t uart_irqn[STM32F7_UART_MAX_INSTANCES] = {
@@ -91,6 +145,25 @@ static uint32_t get_uart_clock(dmuart_instance_t instance)
     return sysclk / apb_prescaler_div(ppre1);
 }
 
+/* ---- Cortex-M7 data cache: what the DMA wrote, not what the cache holds ---- */
+
+#define SCB_CCR             (*(volatile uint32_t *)0xE000ED14UL)
+#define SCB_CCR_DC          (1UL << 16)
+#define SCB_DCIMVAC         (*(volatile uint32_t *)0xE000EF5CUL)
+#define DCACHE_LINE         32U
+
+static void dcache_invalidate(const void* buffer, uint32_t length)
+{
+    if ((SCB_CCR & SCB_CCR_DC) == 0U)
+        return;
+    uintptr_t line = (uintptr_t)buffer & ~(uintptr_t)(DCACHE_LINE - 1U);
+    uintptr_t end = (uintptr_t)buffer + length;
+    __asm__ volatile ("dsb" ::: "memory");
+    for (; line < end; line += DCACHE_LINE)
+        SCB_DCIMVAC = (uint32_t)line;
+    __asm__ volatile ("dsb\n\tisb" ::: "memory");
+}
+
 static void enable_uart_clock(dmuart_instance_t instance)
 {
     volatile UART_RCC_TypeDef *RCC = (UART_RCC_TypeDef *)STM32F7_RCC_BASE;
@@ -119,6 +192,7 @@ int dmod_init(const Dmod_Config_t *Config)
         irq_handlers[i] = NULL;
         irq_user_ptrs[i] = NULL;
         rx_rings[i]      = NULL;
+        memset(&rx_dma[i], 0, sizeof(rx_dma[i]));
     }
     return 0;
 }
@@ -127,6 +201,145 @@ int dmod_deinit(void)
 {
     Dmod_Printf("DMUART port module deinitialized (STM32F7)\n");
     return 0;
+}
+
+/* ---- RX by DMA ---- */
+
+/*
+ * What the DMA wrote since the last time, into the ring - interrupt context:
+ * the USART's (idle line) and the DMA's (half / end of the buffer), at the
+ * same priority, so one never runs inside the other. Returns how many
+ * bytes, `last` the last of them.
+ */
+static uint32_t rx_dma_drain(uint32_t idx, uint8_t* last)
+{
+    rx_dma_t* d = &rx_dma[idx];
+    if (d->lease == NULL || d->draining)
+        return 0;
+    d->draining = true;
+    size_t remaining = dmdma_lease_get_remaining(d->lease);
+    uint32_t head = (remaining == 0U || remaining > RX_DMA_BUFFER_SIZE) ? 0U
+                                                                      : (uint32_t)(RX_DMA_BUFFER_SIZE - remaining);
+    if (!d->from_dma_heap)
+        dcache_invalidate(d->buffer, RX_DMA_BUFFER_SIZE);
+    uint32_t moved = 0;
+    while (d->tail != head)
+    {
+        uint32_t end = (head > d->tail) ? head : RX_DMA_BUFFER_SIZE;
+        uint32_t n = end - d->tail;
+        if (rx_rings[idx] != NULL)
+            dm_sw_ring_write(rx_rings[idx], d->buffer + d->tail, (dm_sw_ring_capacity_t)n);
+        *last = d->buffer[end - 1U];
+        moved += n;
+        d->tail = (end == RX_DMA_BUFFER_SIZE) ? 0U : end;
+    }
+    d->draining = false;
+    return moved;
+}
+
+static void rx_dma_notify(uint32_t idx, uint32_t moved, uint8_t last)
+{
+    dmuart_port_interrupt_handler_t handler = irq_handlers[idx];
+    if (moved > 0 && handler != NULL)
+        handler(irq_user_ptrs[idx], (dmuart_instance_t)(idx + 1U), dmuart_int_trigger_rx_not_empty, last);
+}
+
+/* The DMA's half and end of the buffer (a stream that never pauses) */
+static void rx_dma_callback(dmdma_lease_t lease, dmdma_event_t event, void* user_ptr)
+{
+    (void)lease;
+    uint32_t idx = (uint32_t)(uintptr_t)user_ptr;
+    if ((event & (dmdma_event_error | dmdma_event_aborted)) != 0)
+        return;
+    uint8_t last = 0;
+    uint32_t moved = rx_dma_drain(idx, &last);
+    rx_dma_notify(idx, moved, last);
+}
+
+static void rx_dma_stop(dmuart_instance_t instance)
+{
+    uint32_t idx = (uint32_t)(instance - 1);
+    rx_dma_t* d = &rx_dma[idx];
+    if (d->lease == NULL)
+        return;
+    volatile USART_TypeDef *USART = get_usart(instance);
+    USART->CR3 &= ~USART_CR3_DMAR_BIT;
+    USART->CR1 &= ~USART_CR1_IDLEIE_BIT;
+    dmdma_lease_release(d->lease);          /* (aborts the transfer, quiets its interrupt) */
+    d->lease = NULL;
+    if (d->from_dma_heap)
+    {
+        dmheap_context_t* heap = dmheap_get_context_by_name(RX_DMA_HEAP_NAME);
+        if (heap != NULL)
+            dmheap_free(heap, d->buffer, true);
+    }
+    else
+        Dmod_Free(d->buffer);
+    d->buffer = NULL;
+}
+
+/* Received by DMA from now on: false - no stream for it (the instance receives by interrupt) */
+static bool rx_dma_start(dmuart_instance_t instance)
+{
+    uint32_t idx = (uint32_t)(instance - 1);
+    rx_dma_t* d = &rx_dma[idx];
+    const uint8_t* map = rx_dma_map[idx];
+    if (d->lease != NULL)
+        return true;
+
+    for (uint32_t i = 0; i < 2U && d->lease == NULL; i++)
+        d->lease = dmdma_lease_acquire(map[0], map[1U + i]);
+    if (d->lease == NULL)
+    {
+        DMOD_LOG_WARN("dmuart_port: UART%u - DMA%u streams %u and %u taken: receiving by interrupt\n",
+                      (unsigned)instance, (unsigned)map[0] + 1U, (unsigned)map[1], (unsigned)map[2]);
+        return false;
+    }
+    dmheap_context_t* heap = dmheap_get_context_by_name(RX_DMA_HEAP_NAME);
+    d->from_dma_heap = heap != NULL;
+    d->buffer = (heap != NULL) ? dmheap_aligned_alloc(heap, RX_DMA_ALIGNMENT, RX_DMA_BUFFER_SIZE, "dmuart_port")
+                               : Dmod_AlignedMalloc(RX_DMA_BUFFER_SIZE, RX_DMA_ALIGNMENT);
+    if (d->buffer == NULL)
+    {
+        dmdma_lease_release(d->lease);
+        d->lease = NULL;
+        DMOD_LOG_WARN("dmuart_port: UART%u - no memory for the DMA buffer: receiving by interrupt\n", (unsigned)instance);
+        return false;
+    }
+    d->tail = 0;
+    d->draining = false;
+
+    volatile USART_TypeDef *USART = get_usart(instance);
+    dmdma_transfer_config_t cfg = {
+        .direction             = dmdma_direction_peripheral_to_memory,
+        .request               = map[3],
+        .source_address        = (const void*)(uintptr_t)&USART->RDR,
+        .destination_address   = d->buffer,
+        .source_width          = dmdma_data_width_byte,
+        .destination_width     = dmdma_data_width_byte,
+        .source_increment      = false,
+        .destination_increment = true,
+        .circular              = true,
+        .priority              = dmdma_priority_high,
+        .element_count         = RX_DMA_BUFFER_SIZE,
+        .timeout_ms            = 0,
+    };
+    if (!d->from_dma_heap)
+        dcache_invalidate(d->buffer, RX_DMA_BUFFER_SIZE);    /* (no dirty line evicted over what the DMA writes) */
+    if (dmdma_lease_set_callback(d->lease, rx_dma_callback, (void*)(uintptr_t)idx) != 0 ||
+        dmdma_lease_start(d->lease, &cfg) != 0)
+    {
+        DMOD_LOG_WARN("dmuart_port: UART%u - the DMA did not start: receiving by interrupt\n", (unsigned)instance);
+        rx_dma_stop(instance);
+        return false;
+    }
+    /* The USART's requests to the DMA instead of RXNE interrupts; its idle line: what came, now */
+    USART->CR1 &= ~USART_CR1_RXNEIE_BIT;
+    USART->ICR = USART_ICR_IDLECF_BIT | USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_PECF;
+    USART->CR3 |= USART_CR3_DMAR_BIT | USART_CR3_EIE_BIT;
+    USART->CR1 |= USART_CR1_IDLEIE_BIT;
+    nvic_enable_irq(uart_irqn[idx]);
+    return true;
 }
 
 /* ---- Port API implementation ---- */
@@ -157,6 +370,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _deinit, ( dmuart_instance_t instance
 {
     if (validate_instance(instance) != 0) return -1;
 
+    rx_dma_stop(instance);
     volatile USART_TypeDef *USART = get_usart(instance);
     USART->CR1 &= ~(USART_CR1_UE | USART_CR1_TE | USART_CR1_RE);
 
@@ -239,10 +453,19 @@ dmod_dmuart_port_api_declaration(1.0, int, _flush, ( dmuart_instance_t instance 
         if (--timeout == 0) return -1;
     }
 
-    /* Discard any pending RX data */
-    while (USART->ISR & USART_ISR_RXNE)
+    /* Discard any pending RX data (received by DMA: what it wrote is skipped) */
+    rx_dma_t* d = &rx_dma[instance - 1];
+    if (d->lease != NULL)
     {
-        (void)USART->RDR;
+        size_t remaining = dmdma_lease_get_remaining(d->lease);
+        d->tail = (remaining == 0U || remaining > RX_DMA_BUFFER_SIZE) ? 0U : (uint32_t)(RX_DMA_BUFFER_SIZE - remaining);
+    }
+    else
+    {
+        while (USART->ISR & USART_ISR_RXNE)
+        {
+            (void)USART->RDR;
+        }
     }
 
     /* Clear any error flags */
@@ -472,7 +695,15 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_interrupt_trigger, ( dmuart_inst
     USART->CR3 &= ~(1U << 0);  /* EIE */
 
     /* Set requested triggers */
-    if (trigger & dmuart_int_trigger_rx_not_empty)
+    if (rx_dma[instance - 1].lease != NULL)
+    {
+        /* Received by DMA: its bytes come by the idle line and the DMA's events, not RXNE */
+        USART->CR1 |= USART_CR1_IDLEIE_BIT;
+        USART->CR3 |= USART_CR3_EIE_BIT;
+        nvic_enable_irq(uart_irqn[instance - 1]);
+        trigger = (dmuart_int_trigger_t)(trigger & ~dmuart_int_trigger_rx_not_empty);
+    }
+    else if (trigger & dmuart_int_trigger_rx_not_empty)
         USART->CR1 |= (1U << 5);  /* RXNEIE */
     if (trigger & dmuart_int_trigger_tx_empty)
         USART->CR1 |= (1U << 7);  /* TXEIE */
@@ -488,7 +719,7 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_interrupt_trigger, ( dmuart_inst
      * never service it. */
     if (trigger != dmuart_int_trigger_off)
         nvic_enable_irq(uart_irqn[instance - 1]);
-    else
+    else if (rx_dma[instance - 1].lease == NULL)
         nvic_disable_irq(uart_irqn[instance - 1]);
 
     return 0;
@@ -537,7 +768,11 @@ dmod_dmuart_port_api_declaration(1.0, int, _set_rx_ring,
     ( dmuart_instance_t instance, dm_sw_ring_t ring ))
 {
     if (validate_instance(instance) != 0) return -1;
+    if (ring == NULL)
+        rx_dma_stop(instance);
     rx_rings[instance - 1] = ring;
+    if (ring != NULL)
+        (void)rx_dma_start(instance);       /* (no stream: by interrupt) */
     return 0;
 }
 
@@ -557,7 +792,17 @@ static void stm32f7_uart_irq_handler(dmuart_instance_t instance)
     uint8_t data = 0;
     dmuart_int_trigger_t trigger = dmuart_int_trigger_off;
 
-    if (USART->ISR & USART_ISR_RXNE)
+    if (rx_dma[idx].lease != NULL)
+    {
+        /* Received by DMA: the line went idle - what came, into the ring (RDR is the DMA's) */
+        if (USART->ISR & USART_ISR_IDLE_BIT)
+        {
+            USART->ICR = USART_ICR_IDLECF_BIT;
+            if (rx_dma_drain(idx, &data) > 0)
+                trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_rx_not_empty);
+        }
+    }
+    else if (USART->ISR & USART_ISR_RXNE)
     {
         uint8_t rx_buf[STM32F7_UART_RX_DRAIN_MAX];
         uint32_t rx_count = 0;

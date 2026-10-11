@@ -41,11 +41,22 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     ${COMMON_SOURCES}
 )
 
-dmod_link_modules(${DMOD_MODULE_NAME}
+# One dmod_link_modules() call: each call rewrites the target's version
+# requirements file.
+# stm32f7: RX by DMA - dmdma 0.4 (its lease API), dmheap (the buffer from
+# dmod-boot's "dma" heap, never cached).
+set(DMUART_PORT_MODULES
     dm_sw_ring
     dmclk_port
     dmosi
 )
+if(DMUART_MCU_SERIES STREQUAL "stm32f7")
+    list(APPEND DMUART_PORT_MODULES
+        dmdma@>=0.4
+        dmheap
+    )
+endif()
+dmod_link_modules(${DMOD_MODULE_NAME} ${DMUART_PORT_MODULES})
 
 target_include_directories(${DMOD_MODULE_NAME} BEFORE PRIVATE
     ${CMAKE_SOURCE_DIR}/include

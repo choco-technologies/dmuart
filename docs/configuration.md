@@ -19,6 +19,21 @@ All parameters are in the `[dmuart]` section:
 | `rx_ring_size` | integer | 256 | Capacity of the RX ring buffer, in bytes (0 disables it) |
 | `rx_ring_wait_mode` | string | "some_data" | RX ring read-wait behavior: "none" (return immediately), "some_data" (wait for at least one byte), "all_data" (wait for the full requested length) |
 
+### Receiving by DMA (STM32F7)
+
+On STM32F7 a UART with an RX ring receives by DMA: a circular 1 KiB buffer
+(from the `dma` heap when there is one - uncached DTCM -, else the D-cache
+is invalidated for it) that the USART's idle line and the DMA's half / end
+of the buffer drain into the ring. No byte is lost to an interrupt that
+runs late: the USART has no FIFO, at 921600 baud a byte comes every ~11 us.
+The stream is one of the two the UART can use (dmdma's leases); none free -
+the UART receives by interrupt, as without DMA.
+
+The ring is then what holds the bytes until the reader is scheduled: size
+it for that, not for a line. At 921600 baud 256 bytes are 2.8 ms; a reader
+reading byte by byte behind a busy thread (a display's rendering) misses
+them - the old ones are dropped. The F7 boards' consoles have 4096 (~44 ms).
+
 ## Examples
 
 ### Basic 115200 8N1
