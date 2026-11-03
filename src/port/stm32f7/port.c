@@ -2,6 +2,7 @@
 #include "dmuart_port.h"
 #include "dmod.h"
 #include <string.h>
+#include <errno.h>
 #include "dmosi.h"
 #include "dm_sw_ring.h"
 #include "dmclk_port.h"
@@ -379,6 +380,13 @@ dmod_dmuart_port_api_declaration(1.0, int, _deinit, ( dmuart_instance_t instance
     nvic_disable_irq(uart_irqn[instance - 1]);
 
     return 0;
+}
+
+dmod_dmuart_port_api_declaration(1.0, int, _set_pins, ( dmuart_instance_t instance, int tx_pin, int rx_pin, int rts_pin, int cts_pin ))
+{
+    /* The pins of the STM32 are set by their alternate function (dmgpio) */
+    (void)instance; (void)tx_pin; (void)rx_pin; (void)rts_pin; (void)cts_pin;
+    return -ENOTSUP;
 }
 
 dmod_dmuart_port_api_declaration(1.0, int, _transmit, ( dmuart_instance_t instance, const uint8_t* data, size_t size ))

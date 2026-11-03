@@ -11,6 +11,17 @@
 dmod_dmuart_port_api(1.0, int, _init,   ( dmuart_instance_t instance ) );
 dmod_dmuart_port_api(1.0, int, _deinit, ( dmuart_instance_t instance ) );
 
+/**
+ * @brief Pads of the UART signals, for the chips that route them freely (the GPIO matrix of the ESP32)
+ *
+ * -1 leaves a signal as it is. Called before dmuart_port_init() when the configuration names a pad
+ * (tx_pin, rx_pin, rts_pin, cts_pin); the ports of the chips whose pads are fixed by the alternate
+ * function of the pin (dmgpio) return -ENOTSUP.
+ *
+ * @return 0 on success, -EINVAL for a pad the chip does not have, -ENOTSUP
+ */
+dmod_dmuart_port_api(1.0, int, _set_pins, ( dmuart_instance_t instance, int tx_pin, int rx_pin, int rts_pin, int cts_pin ) );
+
 /* --- Data transfer --- */
 
 dmod_dmuart_port_api(1.0, int, _transmit, ( dmuart_instance_t instance, const uint8_t* data, size_t size ) );

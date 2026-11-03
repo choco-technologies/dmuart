@@ -12,6 +12,7 @@ A DMOD (Dynamic Modular System) module for UART (Universal Asynchronous Receiver
 - **Hardware Abstraction**: Platform-independent API with hardware-specific implementations
 - **DMDRVI Integration**: Full DMOD driver interface implementation
 - **STM32 Support**: STM32F7 family currently supported
+- **ESP32-S3 Support**: UART0-2 with a FIFO, pads chosen by the configuration (GPIO matrix), see [docs/esp32s3.md](docs/esp32s3.md)
 - **Extensible**: Easy to add support for additional microcontroller families
 
 ## Quick Start
@@ -91,6 +92,9 @@ dmini_free(config);
 # Configure for STM32F7
 cmake -DDMUART_MCU_SERIES=stm32f7 -B build
 
+# Configure for ESP32-S3 (needs the xtensa-esp32s3-elf toolchain)
+cmake -DDMUART_MCU_SERIES=esp32s3 -B build
+
 # Build
 cmake --build build
 ```
@@ -118,6 +122,7 @@ dmf-man dmuart port     # Port implementation guide
 | Platform | Status | Notes |
 |----------|--------|-------|
 | STM32F7  | ✅ Supported | Full UART support (USART1-6, UART4-5, UART7-8) |
+| ESP32-S3 | ✅ Supported | UART0-2 (instance 0-2), any pads, see [docs/esp32s3.md](docs/esp32s3.md) |
 | Other STM32 | 🔧 In Progress | Easy to add using STM32 common code |
 | Other MCUs | 📋 Planned | Contributions welcome |
 
