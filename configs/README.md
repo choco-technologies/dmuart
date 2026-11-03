@@ -31,6 +31,7 @@ configs/
 │       ├── usart1.ini
 │       └── usart6.ini
 └── mcu/                            # MCU-specific configurations
+    ├── esp32s3.ini                 # ESP32-S3 UART0 (GPIO43 / GPIO44)
     └── stm32f746zg.ini
 ```
 

@@ -9,7 +9,7 @@
  */
 typedef struct
 {
-    dmuart_instance_t       instance;           /**< UART instance number (1-based) */
+    dmuart_instance_t       instance;           /**< UART instance number (1-based on the STM32, 0-based on the ESP32-S3) */
     dmuart_baudrate_t       baudrate;           /**< Baud rate */
     dmuart_word_length_t    word_length;        /**< Word length (data bits) */
     dmuart_parity_t         parity;             /**< Parity setting */
@@ -20,6 +20,10 @@ typedef struct
     dmuart_loopback_t       loopback;           /**< Loopback mode */
     dmuart_int_trigger_t    interrupt_trigger;  /**< Interrupt trigger source */
     dmuart_interrupt_handler_t interrupt_handler; /**< Interrupt handler (NULL = not used) */
+    int                     tx_pin;             /**< Pad of the TX signal for the chips that route it freely (-1: not given) */
+    int                     rx_pin;             /**< Pad of the RX signal (-1: not given) */
+    int                     rts_pin;            /**< Pad of the RTS signal (-1: not given) */
+    int                     cts_pin;            /**< Pad of the CTS signal (-1: not given) */
 } dmuart_config_t;
 
 #endif // DMUART_H

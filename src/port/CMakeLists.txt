@@ -47,9 +47,14 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # dmod-boot's "dma" heap, never cached).
 set(DMUART_PORT_MODULES
     dm_sw_ring
-    dmclk_port
-    dmosi
 )
+# the STM32 ports take the clocks from dmclk and use dmosi; the ESP32-S3 one counts from the XTAL
+if(NOT DMUART_MCU_SERIES STREQUAL "esp32s3")
+    list(APPEND DMUART_PORT_MODULES
+        dmclk_port
+        dmosi
+    )
+endif()
 if(DMUART_MCU_SERIES STREQUAL "stm32f7")
     list(APPEND DMUART_PORT_MODULES
         dmdma@>=0.4

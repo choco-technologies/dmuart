@@ -266,6 +266,10 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t conf
     context->config.instance    = (dmuart_instance_t)dmini_get_int(config, section, "instance", 1);
     context->config.interrupt_trigger = string_to_interrupt_trigger(dmini_get_string(config, section, "interrupt_trigger", "off"));
     context->config.interrupt_handler = NULL;
+    context->config.tx_pin  = dmini_get_int(config, section, "tx_pin", -1);
+    context->config.rx_pin  = dmini_get_int(config, section, "rx_pin", -1);
+    context->config.rts_pin = dmini_get_int(config, section, "rts_pin", -1);
+    context->config.cts_pin = dmini_get_int(config, section, "cts_pin", -1);
 
     const char *handler_name = dmini_get_string(config, section, "interrupt_handler", NULL);
     context->interrupt_handler_name = (handler_name != NULL) ? Dmod_StrDup(handler_name) : NULL;
@@ -285,6 +289,18 @@ static int configure(dmdrvi_context_t context)
 {
     dmuart_config_t *c = &context->config;
     int ret;
+
+    /* The pads of the chips that route the signals freely (before the init: it connects them) */
+    if (c->tx_pin >= 0 || c->rx_pin >= 0 || c->rts_pin >= 0 || c->cts_pin >= 0)
+    {
+        ret = dmuart_port_set_pins(c->instance, c->tx_pin, c->rx_pin, c->rts_pin, c->cts_pin);
+        if (ret != 0)
+        {
+            DMOD_LOG_ERROR("UART%u: the pins (tx %d, rx %d, rts %d, cts %d) are not accepted (%d)\n",
+                c->instance, c->tx_pin, c->rx_pin, c->rts_pin, c->cts_pin, ret);
+            return ret;
+        }
+    }
 
     ret = dmuart_port_init(c->instance);
     if (ret != 0)
