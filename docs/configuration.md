@@ -18,6 +18,7 @@ All parameters are in the `[dmuart]` section:
 | `instance` | integer | 1 | UART instance number (1-8 on the STM32, 0-2 on the ESP32-S3) |
 | `tx_pin`, `rx_pin`, `rts_pin`, `cts_pin` | integer | (none) | Pads of the signals for the chips that route them freely (GPIO numbers; the ESP32-S3). The STM32 ports take the pins from dmgpio (`-ENOTSUP`) |
 | `rx_ring_size` | integer | 256 | Capacity of the RX ring buffer, in bytes (0 disables it) |
+| `tty` | bool | 1 | Announce the node to dmtty, which puts a console (`ttyN`, a shell) on it. Set 0 for a UART wired to a device that is not a terminal - a modem, a GPS: the shell would read what the device says and answer it |
 | `rx_ring_wait_mode` | string | "some_data" | RX ring read-wait behavior: "none" (return immediately), "some_data" (wait for at least one byte), "all_data" (wait for the full requested length) |
 | `rx_dma` | integer | 1 | Receive by DMA when the port can (STM32F7); 0: by interrupt. For a platform whose DMA does not serve the UART, e.g. an emulator |
 
