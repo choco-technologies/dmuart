@@ -27,6 +27,7 @@ struct dmdrvi_context
     dm_sw_ring_flags_t  rx_ring_wait_flags;          /**< RX ring read-wait behavior (from config) */
     bool                rx_dma;                      /**< Receive by DMA when the port can (from config) */
     char               *tty_path;                    /**< Absolute dmdevfs path announced to dmtty (NULL = not announced) */
+    bool                tty;                         /**< Announce the node to dmtty (a console on it); from config */
 };
 
 static int is_valid_context(dmdrvi_context_t context)
@@ -278,6 +279,7 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t conf
     context->rx_ring_wait_flags = string_to_rx_ring_wait_flags(
         dmini_get_string(config, section, "rx_ring_wait_mode", "some_data"));
     context->rx_dma = dmini_get_int(config, section, "rx_dma", 1) != 0;
+    context->tty = dmini_get_int(config, section, "tty", 1) != 0;
 
     return check_config_parameters(&context->config);
 }
@@ -532,7 +534,9 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmuart, void, _path_ready, ( dmdrvi_context
     /* Announce this device to dmtty via dmhaman, without linking directly
      * against dmtty, so that a TTY device node gets attached on top of it if
      * dmtty is present. UART is inherently stream/line-discipline compatible,
-     * so every instance is announced. */
+     * so every instance is announced - except those with tty=0: a UART that is wired to a device (a modem, a GPS) is not a console. */
+    if (!context->tty)
+        return;
     context->tty_path = Dmod_StrDup(path);
     if (context->tty_path != NULL)
     {
