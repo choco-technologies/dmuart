@@ -7,6 +7,8 @@ This directory contains pre-configured UART settings for various development boa
 ```
 configs/
 ├── board/                          # Board-specific configurations
+│   ├── elecrow-dis08070h/          # Elecrow DIS08070H (CrowPanel ESP32 HMI 7.0")
+│   │   └── uart0.ini
 │   ├── nucleo-f401re/              # NUCLEO-F401RE
 │   │   ├── usart1.ini
 │   │   └── usart2.ini
@@ -84,6 +86,7 @@ pull=up
 | STM32F429I-DISCOVERY | `board/stm32f429i-discovery/` | 921600 | USART1 |
 | STM32F746G-DISCO | `board/stm32f746g-disco/` | 921600 | USART1, USART6 |
 | STM32F769I-DISCOVERY | `board/stm32f769i-discovery/` | 921600 | USART1, USART6 |
+| Elecrow DIS08070H (ESP32-S3) | `board/elecrow-dis08070h/` | 921600 | UART0 (the USB-UART bridge, GPIO43 / GPIO44) |
 
 ## MCU Configurations
 
