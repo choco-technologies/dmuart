@@ -599,6 +599,10 @@ static void uart_irq_handler(dmuart_instance_t instance)
     dmuart_int_trigger_t trigger = dmuart_int_trigger_off;
     uint8_t data = 0;
 
+    /* Clear the flags BEFORE the FIFO is read: a byte that arrives while the FIFO is drained raises the flag again, and
+       clearing afterwards would erase that request and leave the byte in the FIFO until the next one comes. */
+    *ureg(instance, UART_INT_CLR) = st;
+
     if (st & (UART_INT_RXFIFO_FULL | UART_INT_RXFIFO_TOUT))
     {
         /* the FIFO into the ring, whatever it holds */
@@ -629,8 +633,6 @@ static void uart_irq_handler(dmuart_instance_t instance)
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_tx_complete);
     if (st & (UART_INT_PARITY_ERR | UART_INT_FRM_ERR | UART_INT_RXFIFO_OVF))
         trigger = (dmuart_int_trigger_t)(trigger | dmuart_int_trigger_error);
-
-    *ureg(instance, UART_INT_CLR) = st;
 
     dmuart_port_interrupt_handler_t handler = u->handler;
     if (handler != NULL && trigger != dmuart_int_trigger_off)
